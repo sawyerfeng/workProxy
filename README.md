@@ -10,7 +10,7 @@
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift)
 ![UI](https://img.shields.io/badge/UI-SwiftUI-438EFF)
 
-[快速开始](#快速开始) · [使用方式](#使用方式) · [TUN 联动](#clash--mihomo-联动) · [常见问题](#常见问题)
+[介绍网站](https://sawyerfeng.github.io/workProxy/) · [快速开始](#快速开始) · [使用方式](#使用方式) · [TUN 联动](#clash--mihomo-联动) · [常见问题](#常见问题)
 
 </div>
 
@@ -157,3 +157,16 @@ swift test --disable-sandbox
 欢迎通过 [Issues](https://github.com/sawyerfeng/workProxy/issues) 反馈问题。请附 macOS 版本、客户端版本、复现步骤及脱敏错误信息。提交改动前请运行测试；网络切换和系统授权需要另外进行实机检查。
 
 更多设计背景见 [规则规格](docs/spec-draft.md) 与 [系统代理控制研究](docs/research/system-proxy-direct-control.md)；历史设计记录可能与当前界面不同，以代码和本文说明为准。
+
+
+### 介绍网站
+
+静态网站位于 `site/`，无构建依赖。GitHub Actions 在 `master` 上的网页文件更新时部署到 [GitHub Pages](https://sawyerfeng.github.io/workProxy/)。
+
+本地预览：
+
+```sh
+python3 -m http.server 8765 --directory site
+```
+
+浏览器打开 http://localhost:8765 。`scripts/check-site.js` 可在该页面的浏览器控制台执行，检查交互演示、状态保留、锚点和布局；请分别在桌面及移动视口运行。网页演示不会操作系统网络。
