@@ -22,33 +22,88 @@ const panel = document.querySelector('.journey-panel');
 const diagram = document.querySelector('.route-diagram');
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const motionToggle = document.querySelector('.motion-toggle');
+const routeButtons = [...document.querySelectorAll('button[data-route]')];
+const activePath = document.querySelector('.active-route');
+const glowPath = document.querySelector('.active-glow');
+const packets = [...document.querySelectorAll('.flow-packet')];
+const lever = document.querySelector('.switch-lever');
 let userPaused = false;
 let diagramVisible = false;
-function updateMotion() {
-  if (userPaused || !diagramVisible || document.hidden || motionPreference.matches) {
-    diagram.pauseAnimations();
-  } else {
-    diagram.unpauseAnimations();
+let target = 0;
+let position = 0;
+let travel = 0;
+let elapsed = 0;
+let lastFrame = 0;
+let frame = 0;
+
+function drawRoute() {
+  const y = 90 + 200 * position;
+  const path = 'M150 190C260 190 250 ' + y + ' 350 ' + y +
+    'H550C650 ' + y + ' 640 190 750 190';
+  activePath.setAttribute('d', path);
+  glowPath.setAttribute('d', path);
+  lever.setAttribute('transform', 'rotate(' + (-25 + position * 50) + ' 205 190)');
+  const length = activePath.getTotalLength();
+  packets.forEach((packet, index) => {
+    const point = activePath.getPointAtLength(((travel + index / packets.length) % 1) * length);
+    packet.setAttribute('cx', point.x);
+    packet.setAttribute('cy', point.y);
+  });
+}
+
+function selectRoute(route) {
+  const throughProxy = route === 'proxy';
+  target = throughProxy ? 1 : 0;
+  elapsed = 0;
+  panel.dataset.route = route;
+  document.querySelector('.journey-controls').dataset.route = route;
+  routeButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.route === route)));
+  document.querySelector('#journey-label').textContent = throughProxy ? '家庭网络' : '公司网络';
+  document.querySelector('#journey-state').textContent = throughProxy ? '经过代理' : '直接连接';
+  document.querySelector('#journey-detail').textContent = throughProxy
+    ? '家庭网络，流量经过代理服务器。' : '公司网络，直接连接互联网。';
+  if (userPaused || motionPreference.matches || !diagramVisible) {
+    position = target;
+    drawRoute();
   }
 }
-document.querySelectorAll('button[data-route]').forEach(button => {
-  button.addEventListener('click', () => {
-    const throughProxy = button.dataset.route === 'proxy';
-    panel.dataset.route = button.dataset.route;
-    document.querySelectorAll('button[data-route]').forEach(item => {
-      item.setAttribute('aria-pressed', String(item === button));
-    });
-    document.querySelector('#journey-label').textContent = throughProxy ? '家庭网络' : '公司网络';
-    document.querySelector('#journey-state').textContent = throughProxy ? '经过代理' : '直接连接';
-    document.querySelector('#journey-detail').textContent = throughProxy
-      ? '家庭网络，流量经过代理服务器。' : '公司网络，直接连接互联网。';
-  });
-});
+
+function animate(time) {
+  const dt = Math.min((time - lastFrame) / 1000, 0.05);
+  lastFrame = time;
+  if (!routeButtons.includes(document.activeElement)) elapsed += dt;
+  if (elapsed >= 4.5) selectRoute(target ? 'direct' : 'proxy');
+  position += (target - position) * (1 - Math.exp(-dt * 5));
+  if (Math.abs(target - position) < 0.001) position = target;
+  travel = (travel + dt / 3.5) % 1;
+  drawRoute();
+  frame = requestAnimationFrame(animate);
+}
+
+function updateMotion() {
+  cancelAnimationFrame(frame);
+  frame = 0;
+  const paused = userPaused || !diagramVisible || document.hidden || motionPreference.matches;
+  panel.dataset.motion = paused ? 'paused' : 'playing';
+  if (motionPreference.matches) {
+    position = target;
+    drawRoute();
+  }
+  if (!paused) {
+    lastFrame = performance.now();
+    frame = requestAnimationFrame(animate);
+  }
+}
+routeButtons.forEach(button => button.addEventListener('click', () => selectRoute(button.dataset.route)));
 motionToggle.addEventListener('click', () => {
   userPaused = !userPaused;
   motionToggle.setAttribute('aria-pressed', String(userPaused));
-  motionToggle.setAttribute('aria-label', userPaused ? '播放线路动画' : '暂停线路动画');
-  motionToggle.textContent = userPaused ? '播放动画' : '暂停动画';
+  motionToggle.setAttribute('aria-label', userPaused ? '播放自动演示' : '暂停自动演示');
+  motionToggle.textContent = userPaused ? '播放演示' : '暂停演示';
+  if (userPaused) {
+    position = target;
+    drawRoute();
+  }
   updateMotion();
 });
 new IntersectionObserver(entries => {
@@ -57,4 +112,5 @@ new IntersectionObserver(entries => {
 }, { threshold: 0.1 }).observe(diagram);
 document.addEventListener('visibilitychange', updateMotion);
 motionPreference.addEventListener('change', updateMotion);
+selectRoute('direct');
 updateMotion();

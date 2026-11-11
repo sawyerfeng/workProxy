@@ -27,7 +27,7 @@
   assert(document.querySelectorAll('button[data-route][aria-pressed="true"]').length === 1, 'One active route');
   const pause = document.querySelector('.motion-toggle');
   pause.click();
-  assert(document.querySelector('.route-diagram').animationsPaused(), 'Pause stops packets');
+  assert(document.querySelector('.journey-panel').dataset.motion === 'paused', 'Pause stops packets');
   assert(pause.getAttribute('aria-pressed') === 'true', 'Pause state announced');
   pause.click();
   const faq = document.querySelector('details');

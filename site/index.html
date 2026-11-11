@@ -62,25 +62,26 @@
 <path id="direct-path" d="M150 190C260 190 250 90 350 90H550C650 90 640 190 750 190"/>
 <path id="proxy-path" d="M150 190C260 190 250 290 350 290H550C650 290 640 190 750 190"/>
 </defs>
-<g class="connection-track direct-track"><use href="#direct-path" class="route-base"/><use href="#direct-path" class="route-glow"/>
-<circle class="packet" r="4"><animateMotion dur="4s" repeatCount="indefinite"><mpath href="#direct-path"/></animateMotion></circle>
-<circle class="packet" r="3" opacity=".6"><animateMotion dur="4s" begin="-1.3s" repeatCount="indefinite"><mpath href="#direct-path"/></animateMotion></circle>
-<circle class="packet" r="3" opacity=".35"><animateMotion dur="4s" begin="-2.6s" repeatCount="indefinite"><mpath href="#direct-path"/></animateMotion></circle>
+<g class="connection-track direct-track"><use href="#direct-path" class="route-base"/>
 <text x="450" y="58">直接连接</text>
 </g>
-<g class="connection-track proxy-track"><use href="#proxy-path" class="route-base"/><use href="#proxy-path" class="route-glow"/>
-<circle class="packet" r="4"><animateMotion dur="5s" repeatCount="indefinite"><mpath href="#proxy-path"/></animateMotion></circle>
-<circle class="packet" r="3" opacity=".6"><animateMotion dur="5s" begin="-1.7s" repeatCount="indefinite"><mpath href="#proxy-path"/></animateMotion></circle>
-<circle class="packet" r="3" opacity=".35"><animateMotion dur="5s" begin="-3.4s" repeatCount="indefinite"><mpath href="#proxy-path"/></animateMotion></circle>
+<g class="connection-track proxy-track"><use href="#proxy-path" class="route-base"/>
+
+</g>
+<g class="active-stream" aria-hidden="true">
+<path class="active-glow" d="M150 190C260 190 250 90 350 90H550C650 90 640 190 750 190"/>
+<path class="active-route" d="M150 190C260 190 250 90 350 90H550C650 90 640 190 750 190"/>
+<circle class="flow-packet" r="5"/><circle class="flow-packet" r="4"/><circle class="flow-packet" r="3"/>
+</g>
 <g class="proxy-server"><rect x="397" y="251" width="106" height="78" rx="22"/>
 <path d="M433 270H467V281H433ZM433 289H467V300H433M441 275H442M441 294H442"/>
 <text x="450" y="364">代理服务器</text></g>
-</g>
+<g class="switch-gate" aria-hidden="true"><circle cx="205" cy="190" r="15"/><path class="switch-lever" d="M205 190L239 190"/><circle class="switch-hub" cx="205" cy="190" r="5"/></g>
 <g class="endpoint computer"><rect x="48" y="151" width="102" height="78" rx="23"/><path d="M78 173H120V199H78ZM71 207H127M95 199V207M103 199V207"/><text x="99" y="266">你的 Mac</text></g>
 <g class="endpoint internet"><rect x="750" y="151" width="102" height="78" rx="23"/><circle cx="801" cy="190" r="22"/><ellipse cx="801" cy="190" rx="10" ry="22"/><path d="M779 190H823M782 179H820M782 201H820"/><text x="801" y="266">互联网</text></g>
 <circle class="junction" cx="169" cy="190" r="3"/><circle class="junction" cx="731" cy="190" r="3"/>
 </svg>
-<div class="journey-bottom"><p id="journey-detail">公司网络，直接连接互联网。</p><button class="motion-toggle" aria-pressed="false" aria-label="暂停线路动画">暂停动画</button></div>
+<div class="journey-bottom"><p id="journey-detail">公司网络，直接连接互联网。</p><button class="motion-toggle" aria-pressed="false" aria-label="暂停自动演示">暂停演示</button></div>
 </div>
 </section>
 <section id="features" class="features wrap section">

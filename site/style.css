@@ -39,3 +39,23 @@
 .motion-toggle:hover{background:#ffffff12;color:var(--ink)}
 @media(max-width:700px){.journey{padding-top:25px;padding-bottom:30px}.journey-heading{align-items:flex-start;flex-direction:column;gap:22px;margin-bottom:25px}.journey-panel{padding:22px 10px 0;border-radius:18px}.journey-caption{font-size:11px;padding:0 8px}.route-diagram{margin:20px 0}.connection-track text,.endpoint text{font-size:25px}.journey-bottom{align-items:flex-start;gap:15px;padding:0 8px 20px}.journey-bottom p{font-size:11px;line-height:1.8}.motion-toggle{white-space:nowrap;font-size:10px}.journey-controls button{font-size:12px;padding:10px 20px}}
 @media(prefers-reduced-motion:reduce){.packet{display:none}.motion-toggle{display:none}}
+/* A single live route bends between the two paths, so the switch stays visible. */
+.journey-controls{position:relative;isolation:isolate}
+.journey-controls:before{content:"";position:absolute;left:5px;top:5px;bottom:5px;width:calc(50% - 5px);background:var(--mint);border-radius:24px;z-index:-1;transition:transform .65s cubic-bezier(.22,1,.36,1)}
+.journey-controls[data-route="proxy"]:before{transform:translateX(100%)}
+.journey-controls button{min-width:100px}
+.journey-controls button[aria-pressed=true]{background:transparent}
+.active-route{fill:none;stroke:var(--mint);stroke-width:2.6;stroke-linecap:round}
+.active-glow{fill:none;stroke:var(--mint);stroke-width:12;opacity:.12;filter:blur(3px)}
+.flow-packet{fill:#d5ffe9;filter:drop-shadow(0 0 7px #8ce6bf)}
+.flow-packet:nth-last-child(2){opacity:.7}.flow-packet:last-child{opacity:.4}
+.switch-gate>circle:first-child{fill:#152a28;stroke:#8ce6bf66;stroke-width:1}
+.switch-lever{stroke:var(--mint);stroke-width:4;stroke-linecap:round}
+.switch-hub{fill:var(--mint)}
+.journey-panel[data-route="direct"] .direct-track,.journey-panel[data-route="proxy"] .proxy-track{opacity:.6}
+.proxy-server{transition:filter .7s}
+.journey-panel[data-route="proxy"] .proxy-server{filter:drop-shadow(0 0 14px #8ce6bf33)}
+@media(prefers-reduced-motion:reduce){.flow-packet{display:none}}
+
+.proxy-server{color:var(--mint);opacity:.16;transition:opacity .7s,filter .7s}.proxy-server text{fill:currentColor;font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;text-anchor:middle}.journey-panel[data-route="proxy"] .proxy-server{opacity:1}
+@media(max-width:700px){.proxy-server text{font-size:25px}}
