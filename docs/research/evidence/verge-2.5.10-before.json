@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-11-10T02:34:20.526961+00:00",
+  "clientVersion": "2.5.10",
+  "clientPersistedPreferences": {
+    "tray_event": "tray_menu",
+    "enable_tun_mode": false,
+    "enable_system_proxy": false,
+    "enable_proxy_guard": false
+  },
+  "systemProxyFlags": {
+    "HTTPEnable": false,
+    "HTTPSEnable": false,
+    "SOCKSEnable": false,
+    "ProxyAutoConfigEnable": false,
+    "ProxyAutoDiscoveryEnable": false
+  },
+  "clientMenuReadSucceeded": false,
+  "switchesSent": 0,
+  "note": "Read-only baseline. Persisted preferences are not proof of current client/kernel state."
+}
