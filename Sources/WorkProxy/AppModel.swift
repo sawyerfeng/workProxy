@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import UserNotifications
 import WorkProxyCore
 
 struct RuleEditorTarget: Identifiable {
@@ -17,6 +18,7 @@ enum SystemProxyState {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published private(set) var changingProxy = false
     @Published private(set) var settings: AppSettings
     @Published private(set) var currentNetwork: NetworkIdentity?
     @Published private(set) var statusText = "等待网络事件"
@@ -27,8 +29,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var effectiveProxy: EffectiveProxy?
     @Published private(set) var endpointReachable: Bool?
     @Published private(set) var loginItemStatus = "未知"
-    @Published private(set) var notificationAuthorized = false
+    @Published private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     @Published private(set) var locationAuthorized = false
+    @Published var showingPreferences = false
     @Published var editingRule: RuleEditorTarget? {
         didSet {
             if editingRule != nil { refreshWiFiNetworks() }
@@ -61,7 +64,7 @@ final class AppModel: ObservableObject {
             machine: NetworkFlowMachine(settings: loaded),
             endpoint: loaded.endpoint,
             locator: location,
-            applier: SystemProxyActionApplier(setup: setup),
+            applier: SystemProxyActionApplier(setup: setup, store: store),
             notifier: notificationService
         )
     }
@@ -70,10 +73,11 @@ final class AppModel: ObservableObject {
 
     var menuBarIcon: String {
         if lastError != nil { return "exclamationmark.triangle" }
-        if settings.paused { return "pause.circle" }
-        if case .action(.on, _) = lastDecision { return "network" }
-        if case .action(.off, _) = lastDecision { return "network.slash" }
-        return "network"
+        switch systemProxyState {
+        case .on: return "network"
+        case .off: return "network.slash"
+        case .mixed, .unknown: return "questionmark.circle"
+        }
     }
 
     var currentNetworkDescription: String {
@@ -145,7 +149,14 @@ final class AppModel: ObservableObject {
         Task {
             await driver.send(.started(monitor.currentIdentity))
             await refreshRuntimeStatus()
-            notificationAuthorized = await notificationService.isAuthorized()
+        }
+        Task {
+            await refreshPermissions()
+            if notificationStatus == .notDetermined {
+                _ = await notificationService.requestAuthorization()
+                await refreshPermissions()
+            }
+            locationService.requestAuthorization()
         }
 
         statusTask = Task { [weak self] in
@@ -245,8 +256,10 @@ final class AppModel: ObservableObject {
     // MARK: - Settings
 
     func setPaused(_ paused: Bool) {
+        guard !changingProxy else { return }
+        let previous = settings
         settings.paused = paused
-        persist()
+        guard persist() else { settings = previous; return }
         let snapshot = settings
         let identity = monitor.currentIdentity
         Task {
@@ -257,6 +270,22 @@ final class AppModel: ObservableObject {
             }
             await driver.update(settings: snapshot)
             await refreshRuntimeStatus()
+        }
+    }
+
+    func setProxyManually(_ enabled: Bool) {
+        guard !changingProxy else { return }
+        let previous = settings
+        settings.paused = true
+        guard persist() else { settings = previous; return }
+        changingProxy = true
+        let snapshot = settings
+        Task {
+            defer { changingProxy = false }
+            await driver.update(settings: snapshot)
+            await driver.applyManually(enabled ? .on : .off)
+            await refreshRuntimeStatus()
+            refreshEffectiveProxy()
         }
     }
 
@@ -271,15 +300,29 @@ final class AppModel: ObservableObject {
     }
 
     func setEndpoint(host: String, portText: String) -> Bool {
-        let trimmed = host.trimmingCharacters(in: .whitespaces)
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let port = Int(portText),
               (1...65535).contains(port) else { return false }
+        let previous = settings
         settings.endpoint = ProxyEndpoint(host: trimmed, port: port)
-        persist()
+        guard persist() else { settings = previous; return false }
         syncDriver()
         endpointReachable = nil
         refreshEndpointReachability()
         return true
+    }
+
+    func setFlClash(_ configuration: FlClashSettings?) -> Bool {
+        do {
+            if let configuration { _ = try FlClashController.request(configuration, method: "GET") }
+            let previous = settings
+            settings.flClash = configuration
+            guard persist() else { settings = previous; return false }
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -301,29 +344,47 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshPermissions() async {
+        notificationStatus = await notificationService.authorizationStatus()
+        locationAuthorized = locationService.isAuthorized
+        refreshLoginItemStatus()
+    }
+
     func requestNotificationAccess() {
         Task {
-            notificationAuthorized = await notificationService.requestAuthorization()
+            let status = await notificationService.authorizationStatus()
+            if status == .notDetermined {
+                _ = await notificationService.requestAuthorization()
+            } else {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+            }
+            await refreshPermissions()
         }
     }
 
     // MARK: - Rules
 
-    func addRule(_ rule: Rule) {
+    @discardableResult
+    func addRule(_ rule: Rule) -> Bool {
+        let previous = settings
         if rule.place != nil {
             settings.rules.insertByPriority(rule)
         } else {
             settings.rules.append(rule)
         }
-        persist()
+        guard persist() else { settings = previous; return false }
         syncDriver()
+        return true
     }
 
-    func updateRule(_ rule: Rule) {
-        guard let index = settings.rules.firstIndex(where: { $0.id == rule.id }) else { return }
+    @discardableResult
+    func updateRule(_ rule: Rule) -> Bool {
+        guard let index = settings.rules.firstIndex(where: { $0.id == rule.id }) else { return false }
+        let previous = settings
         settings.rules[index] = rule
-        persist()
+        guard persist() else { settings = previous; return false }
         syncDriver()
+        return true
     }
 
     func setRuleEnabled(_ id: UUID, _ enabled: Bool) {
@@ -412,11 +473,14 @@ final class AppModel: ObservableObject {
         loginItemStatus = LoginItemService.statusText
     }
 
-    private func persist() {
+    @discardableResult
+    private func persist() -> Bool {
         do {
             try store.save(settings)
+            return true
         } catch {
             lastError = "保存设置失败：\(error.localizedDescription)"
+            return false
         }
     }
 

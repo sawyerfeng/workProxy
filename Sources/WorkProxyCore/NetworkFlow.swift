@@ -312,6 +312,7 @@ public actor NetworkFlowDriver {
     private let notifier: any FailureNotifying
     private var timerTask: Task<Void, Never>?
     private var locationTask: Task<Void, Never>?
+    private var applyTask: Task<Void, Error>?
 
     public init(machine: NetworkFlowMachine, endpoint: ProxyEndpoint,
                 locator: any LocationRequesting,
@@ -339,6 +340,23 @@ public actor NetworkFlowDriver {
         await execute(effects)
     }
 
+    public func applyManually(_ action: ProxyAction) async {
+        await send(.pause)
+        await execute([.apply(action)])
+    }
+
+    private func applySerially(_ action: ProxyAction) async throws {
+        let previous = applyTask
+        let applier = self.applier
+        let endpoint = self.endpoint
+        let task = Task {
+            _ = try? await previous?.value
+            try await applier.apply(action, endpoint: endpoint)
+        }
+        applyTask = task
+        try await task.value
+    }
+
     private func execute(_ effects: [FlowEffect]) async {
         for effect in effects {
             switch effect {
@@ -364,7 +382,7 @@ public actor NetworkFlowDriver {
                 locationTask = nil
             case let .apply(action):
                 do {
-                    try await applier.apply(action, endpoint: endpoint)
+                    try await applySerially(action)
                     await send(.applySucceeded)
                 } catch {
                     await send(.applyFailed(error.localizedDescription))

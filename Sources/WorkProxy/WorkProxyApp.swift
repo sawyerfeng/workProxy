@@ -1,100 +1,7 @@
 import AppKit
+import MapKit
 import SwiftUI
 import WorkProxyCore
-
-// MARK: - Rule draft
-
-enum RuleNetworkKind: String, CaseIterable, Hashable {
-    case wifi
-    case wired
-}
-
-struct RuleDraft {
-    var name = ""
-    var networkKind: RuleNetworkKind = .wifi
-    var ssid = ""
-    var interfaceName = ""
-    var action: ProxyAction = .on
-    var enabled = true
-    var usePlace = false
-    var placeLabel = ""
-    var placeAddress: String?
-    var latitude = 0.0
-    var longitude = 0.0
-    var radius = 500.0
-    var hasPlaceCoordinates = false
-
-    init(rule: Rule?, currentNetwork: NetworkIdentity?) {
-        guard let rule else {
-            if let network = currentNetwork {
-                switch network.kind {
-                case .wifi:
-                    networkKind = .wifi
-                    ssid = network.ssid ?? ""
-                case .wired:
-                    networkKind = .wired
-                    interfaceName = network.interfaceName
-                case .other:
-                    break
-                }
-            }
-            return
-        }
-        name = rule.name
-        action = rule.action
-        enabled = rule.enabled
-        switch rule.network {
-        case let .wifi(value):
-            networkKind = .wifi
-            ssid = value
-        case let .wired(value):
-            networkKind = .wired
-            interfaceName = value
-        }
-        if let place = rule.place {
-            usePlace = true
-            placeLabel = place.label
-            placeAddress = place.address
-            latitude = place.latitude
-            longitude = place.longitude
-            radius = place.radiusMeters
-            hasPlaceCoordinates = true
-        }
-    }
-
-    func makeRule(id: UUID) -> Rule? {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return nil }
-
-        let network: RuleNetwork
-        switch networkKind {
-        case .wifi:
-            let value = ssid.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty else { return nil }
-            network = .wifi(ssid: value)
-        case .wired:
-            guard !interfaceName.isEmpty else { return nil }
-            network = .wired(interfaceName: interfaceName)
-        }
-
-        let place: PlaceCondition?
-        if usePlace {
-            guard hasPlaceCoordinates else { return nil }
-            place = PlaceCondition(
-                label: placeLabel.isEmpty ? "地点" : placeLabel,
-                address: placeAddress,
-                latitude: latitude,
-                longitude: longitude,
-                radiusMeters: radius
-            )
-        } else {
-            place = nil
-        }
-
-        return Rule(id: id, name: trimmedName, network: network,
-                    place: place, action: action, enabled: enabled)
-    }
-}
 
 private extension String {
     var trimmedForInput: String {
@@ -103,31 +10,6 @@ private extension String {
 }
 
 // MARK: - Shared UI
-
-struct StatusBadge: View {
-    let text: String
-    let systemImage: String
-    let tint: Color
-
-    var body: some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(tint.opacity(0.12), in: Capsule())
-    }
-}
-
-struct StatusDot: View {
-    let color: Color
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 7, height: 7)
-    }
-}
 
 struct EmptyStateView: View {
     let systemImage: String
@@ -141,7 +23,9 @@ struct EmptyStateView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 44, weight: .light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.tint)
+                .frame(width: 80, height: 80)
+                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
             Text(title).font(.title3.weight(.semibold))
             Text(message)
                 .font(.callout)
@@ -157,9 +41,34 @@ struct EmptyStateView: View {
     }
 }
 
+struct LocationAccessHint: View {
+    @ObservedObject var service: LocationService
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "location.slash").foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("需要定位权限").font(.callout.weight(.medium))
+                Text("macOS 需要定位权限来读取 Wi-Fi 名称，即使不设置地点条件。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if service.authorizationStatus == .notDetermined {
+                Button("允许定位") { service.requestAuthorization() }
+            } else {
+                Button("系统设置") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices")!)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Rule editor
 
 struct RuleEditorView: View {
+    @Environment(\.colorScheme) private var scheme
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
     @Environment(\.dismiss) private var dismiss
 
     let existing: Rule?
@@ -168,7 +77,7 @@ struct RuleEditorView: View {
     let knownWiFiNetworks: [String]
     let onRefreshWiFi: () -> Void
     @ObservedObject var locationService: LocationService
-    let onSave: (Rule) -> Void
+    let onSave: (Rule) -> String?
 
     @State private var draft: RuleDraft
     @State private var manualWiFi: Bool
@@ -176,13 +85,15 @@ struct RuleEditorView: View {
     @State private var results: [PlaceCandidate] = []
     @State private var searching = false
     @State private var searchError: String?
-    @FocusState private var nameFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showNetworkOptions: Bool
+    @State private var saveError: String?
 
     init(existing: Rule?, services: [NetworkService],
          currentNetwork: NetworkIdentity?, knownWiFiNetworks: [String],
          locationService: LocationService,
          onRefreshWiFi: @escaping () -> Void,
-         onSave: @escaping (Rule) -> Void) {
+         onSave: @escaping (Rule) -> String?) {
         let initial = RuleDraft(rule: existing, currentNetwork: currentNetwork)
         self.existing = existing
         self.services = services
@@ -192,6 +103,7 @@ struct RuleEditorView: View {
         _locationService = ObservedObject(wrappedValue: locationService)
         self.onSave = onSave
         _draft = State(initialValue: initial)
+        _showNetworkOptions = State(initialValue: initial.makeRule(id: UUID()) == nil)
         _manualWiFi = State(initialValue: initial.networkKind == .wifi
             && (knownWiFiNetworks.isEmpty
                 || (!initial.ssid.isEmpty && !knownWiFiNetworks.contains(initial.ssid))))
@@ -219,103 +131,143 @@ struct RuleEditorView: View {
         existing == nil ? "添加规则" : "编辑规则"
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.title2.bold())
-                    Text("网络条件命中后，自动切换系统代理。")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 12)
+    private var selectedNetworkName: String {
+        if draft.networkKind == .wifi {
+            return draft.ssid.trimmedForInput.isEmpty ? "选择 Wi-Fi" : draft.ssid.trimmedForInput
+        }
+        return services.first { $0.device == draft.interfaceName }?.name
+            ?? (draft.interfaceName.isEmpty ? "选择有线网络" : draft.interfaceName)
+    }
 
-            Divider()
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: existing == nil ? "plus.circle.fill" : "slider.horizontal.3")
+                    .font(.title).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.title2.weight(.semibold))
+                    Text("选好网络，剩下的交给自动切换。")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .padding(24)
 
             Form {
                 Section {
-                    TextField("名称", text: $draft.name)
-                        .focused($nameFocused)
-                    Toggle("启用", isOn: $draft.enabled)
-                } header: {
-                    Text("规则")
-                } footer: {
-                    if draft.name.trimmedForInput.isEmpty {
-                        Text("名称为必填项。")
+                    HStack(spacing: 12) {
+                        Image(systemName: draft.networkKind == .wifi ? "wifi" : "cable.connector")
+                            .font(.title3).foregroundStyle(.tint)
+                        Text(selectedNetworkName).fontWeight(.medium)
+                            .lineLimit(2).textSelection(.enabled)
+                        Spacer()
+                        Button(showNetworkOptions ? "收起" : "更换") {
+                            showNetworkOptions.toggle()
+                        }
+                        .buttonStyle(.borderless)
                     }
-                }
-
-                Section {
-                    Picker("类型", selection: $draft.networkKind) {
-                        Text("Wi-Fi").tag(RuleNetworkKind.wifi)
-                        Text("有线").tag(RuleNetworkKind.wired)
-                    }
-                    .pickerStyle(.segmented)
-
-                    if draft.networkKind == .wifi {
-                        wifiEditor
-                    } else {
-                        Picker("接口", selection: $draft.interfaceName) {
-                            Text("请选择").tag("")
-                            ForEach(wiredServices) { service in
-                                Text("\(service.name) (\(service.device ?? "?"))")
-                                    .tag(service.device ?? "")
+                    if showNetworkOptions {
+                        Picker("网络类型", selection: $draft.networkKind) {
+                            Text("Wi-Fi").tag(RuleNetworkKind.wifi)
+                            Text("有线").tag(RuleNetworkKind.wired)
+                        }
+                        .pickerStyle(.segmented)
+                        if draft.networkKind == .wifi {
+                            wifiEditor
+                        } else {
+                            Picker("有线网络", selection: $draft.interfaceName) {
+                                Text("请选择").tag("")
+                                ForEach(wiredServices) { service in
+                                    Text(service.name).tag(service.device ?? "")
+                                }
+                                if !draft.interfaceName.isEmpty,
+                                   !wiredServices.contains(where: { $0.device == draft.interfaceName }) {
+                                    Text("\(draft.interfaceName)（当前不可用）").tag(draft.interfaceName)
+                                }
+                            }
+                            if draft.interfaceName.isEmpty {
+                                Text("请选择有线网络；未发现时请连接网卡后刷新。")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Button("刷新网络", action: onRefreshWiFi)
                             }
                         }
-                        if draft.interfaceName.isEmpty {
-                            Text("请选择要匹配的有线接口。")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
+                    }
+                    if draft.networkKind == .wifi && !locationService.isAuthorized {
+                        LocationAccessHint(service: locationService)
+                    }
+                    if draft.networkKind == .wifi && draft.ssid.trimmedForInput.isEmpty {
+                        Text("未读取到当前 Wi-Fi 名称，请选择网络或手动输入。")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("网络条件")
-                } footer: {
-                    Text("跟随系统当前的主要物理连接匹配；有线规则按接口判断。")
+                    Text("连接这个网络时")
                 }
 
                 Section {
-                    Toggle("只在指定地点生效", isOn: $draft.usePlace.animation())
+                    ProxyActionChoices(selection: $draft.action)
+                    if let rule = draft.makeRule(id: existing?.id ?? UUID()) {
+                        Label("连接 \(selectedNetworkName) 时，\(rule.action.displayName)",
+                              systemImage: "arrow.turn.down.right")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    if draft.usePlace && draft.hasPlaceCoordinates {
+                        Label("仅在 \(draft.placeLabel.isEmpty ? "指定地点" : draft.placeLabel) 附近 \(Int(draft.radius)) 米内",
+                              systemImage: "mappin.and.ellipse")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
+                    Toggle(isOn: $draft.usePlace) {
+                        Label("只在指定地点生效", systemImage: "map.fill")
+                            .font(.headline)
+                            .foregroundStyle(palette.mint)
+                    }
                     if draft.usePlace {
+                        if draft.networkKind != .wifi && !locationService.isAuthorized {
+                            LocationAccessHint(service: locationService)
+                        }
                         placeEditor
+                    } else {
+                        Text("可添加家庭或公司地址，避免同名网络误匹配。")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("地点条件（可选）")
-                } footer: {
-                    Text("地点是附加条件：网络与地点同时满足时规则才会命中。")
+                    Text("地点条件")
                 }
 
-                Section("动作") {
-                    Picker("动作", selection: $draft.action) {
-                        ForEach(ProxyAction.allCases, id: \.self) { action in
-                            Text(action.displayName).tag(action)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                Section {
+                    TextField("规则名称（可选）", text: $draft.name, prompt: Text("自动命名"))
                 }
+
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
 
             Divider()
-
             HStack {
+                if let saveError {
+                    Label(saveError, systemImage: "exclamationmark.circle")
+                        .font(.caption).foregroundStyle(.red)
+                } else {
+                    Text("保存规则后，在下次网络事件时自动匹配。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("取消") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("保存") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(palette.mint)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isValid)
             }
-            .padding(16)
+            .padding(20)
         }
-        .frame(width: 580, height: 700)
-        .onAppear {
-            if existing == nil { nameFocused = true }
-        }
+        .background(palette.canvas)
+        .tint(palette.mint)
+        .frame(width: 600, height: 740)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: showNetworkOptions)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: draft.usePlace)
     }
 
     @ViewBuilder
@@ -333,10 +285,6 @@ struct RuleEditorView: View {
                 .disabled(knownWiFiNetworks.isEmpty)
                 Button("刷新列表") { onRefreshWiFi() }
                 Spacer()
-                if !locationService.isAuthorized {
-                    Button("允许定位") { locationService.requestAuthorization() }
-                        .help("读取当前 Wi-Fi 名称需要定位权限")
-                }
             }
         } else {
             Picker("Wi-Fi 名称", selection: $draft.ssid) {
@@ -354,10 +302,6 @@ struct RuleEditorView: View {
                 }
                 Button("刷新列表") { onRefreshWiFi() }
                 Spacer()
-                if !locationService.isAuthorized {
-                    Button("允许定位") { locationService.requestAuthorization() }
-                        .help("读取当前 Wi-Fi 名称需要定位权限")
-                }
             }
             if knownWiFiNetworks.isEmpty {
                 Text("没有读取到已保存的 Wi-Fi，请手动输入。")
@@ -374,7 +318,8 @@ struct RuleEditorView: View {
     @ViewBuilder
     private var placeEditor: some View {
         HStack {
-            TextField("搜索地址", text: $query)
+            TextField("搜索地址", text: $query, prompt: Text("输入公司、小区或街道地址"))
+                .textFieldStyle(.roundedBorder)
                 .onSubmit { search() }
             Button("搜索") { search() }
                 .disabled(query.trimmedForInput.isEmpty || searching)
@@ -411,6 +356,21 @@ struct RuleEditorView: View {
         }
 
         if draft.hasPlaceCoordinates {
+            Map(coordinateRegion: .constant(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: draft.latitude, longitude: draft.longitude),
+                latitudinalMeters: draft.radius * 3,
+                longitudinalMeters: draft.radius * 3
+            )), interactionModes: [], annotationItems: [
+                PlaceCandidate(label: draft.placeLabel, address: draft.placeAddress,
+                               latitude: draft.latitude, longitude: draft.longitude)
+            ]) { place in
+                MapMarker(coordinate: CLLocationCoordinate2D(
+                    latitude: place.latitude, longitude: place.longitude), tint: .mint)
+            }
+            .frame(height: 180)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .accessibilityLabel("所选地点地图：\(draft.placeLabel)")
+
             HStack(spacing: 10) {
                 Image(systemName: "mappin.circle.fill")
                     .font(.title3)
@@ -451,6 +411,8 @@ struct RuleEditorView: View {
                     Image(systemName: "chevron.up.chevron.down")
                 }
                 .menuStyle(.borderlessButton)
+                .help("选择常用范围")
+                .accessibilityLabel("选择常用范围")
                 .fixedSize()
             }
         }
@@ -470,8 +432,8 @@ struct RuleEditorView: View {
 
     private func save() {
         guard let rule = draft.makeRule(id: existing?.id ?? UUID()) else { return }
-        onSave(rule)
-        dismiss()
+        saveError = onSave(rule)
+        if saveError == nil { dismiss() }
     }
 
     private func search() {
@@ -496,6 +458,7 @@ struct RuleEditorView: View {
         draft.placeLabel = candidate.label
         draft.placeAddress = candidate.address
         draft.hasPlaceCoordinates = true
+        results = []
     }
 }
 
@@ -504,79 +467,76 @@ struct RuleEditorView: View {
 struct RuleRow: View {
     @ObservedObject var model: AppModel
     let rule: Rule
-
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
+    private var accent: Color { palette.actionColor(rule.action) }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .help("拖动排序")
-
-            Toggle("", isOn: Binding(
+        HStack(spacing: 14) {
+            Image(systemName: networkIcon)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(rule.enabled ? accent : palette.secondary)
+                .frame(width: 48, height: 48)
+                .background(accent.opacity(rule.enabled ? 0.12 : 0.04),
+                            in: RoundedRectangle(cornerRadius: 16))
+                .rotationEffect(.degrees(hovering && !reduceMotion ? -6 : 0))
+                .scaleEffect(rule.enabled ? 1 : 0.86)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(networkDescription).font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(palette.text).lineLimit(1)
+                    .help(networkDescription)
+                if let place = rule.place {
+                    Label("\(place.label) · \(Int(place.radiusMeters)) 米", systemImage: "mappin.and.ellipse")
+                        .font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(1)
+                } else {
+                    Text(rule.name).font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(1)
+                }
+            }
+            .opacity(rule.enabled ? 1 : 0.55)
+            Spacer(minLength: 8)
+            Label(rule.action == .on ? "开启代理" : "关闭代理",
+                  systemImage: rule.action == .on ? "arrow.up.right" : "minus")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(accent)
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(accent.opacity(0.10), in: Capsule())
+                .fixedSize()
+            Button {
+                model.editingRule = RuleEditorTarget(rule: rule)
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundStyle(palette.secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .help("编辑规则")
+            .accessibilityLabel("编辑规则 \(rule.name)")
+            Toggle("启用规则 \(rule.name)", isOn: Binding(
                 get: { rule.enabled },
                 set: { model.setRuleEnabled(rule.id, $0) }
             ))
-            .labelsHidden()
-            .accessibilityLabel("启用规则 \(rule.name)")
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(rule.name)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(rule.enabled ? .primary : .secondary)
-                HStack(spacing: 6) {
-                    Image(systemName: networkIcon)
-                    Text(networkDescription)
-                    Text("·")
-                    Text(rule.action.displayName)
-                    if let place = rule.place {
-                        Text("·")
-                        Text("\(place.label) · \(Int(place.radiusMeters)) 米")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .opacity(rule.enabled ? 1 : 0.6)
-
-            Spacer()
-
-            if hovering {
-                Button {
-                    model.editingRule = RuleEditorTarget(rule: rule)
-                } label: {
-                    Image(systemName: "pencil")
-                }
-                .buttonStyle(.borderless)
-                .help("编辑规则")
-                .accessibilityLabel("编辑规则 \(rule.name)")
-
-                Button(role: .destructive) {
-                    model.deleteRule(id: rule.id)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .help("删除规则")
-                .accessibilityLabel("删除规则 \(rule.name)")
-            }
+            .labelsHidden().toggleStyle(.switch).controlSize(.small).tint(accent)
         }
-        .padding(.vertical, 3)
-        .contentShape(Rectangle())
+        .padding(14)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(hovering ? accent.opacity(0.35) : palette.line, lineWidth: 1)
+        }
+        .shadow(color: accent.opacity(hovering ? 0.10 : 0), radius: 10, y: 4)
+        .offset(y: hovering && !reduceMotion ? -2 : 0)
+        .contentShape(RoundedRectangle(cornerRadius: 18))
         .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.7), value: hovering)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.7), value: rule.enabled)
         .contextMenu {
-            Button("编辑") {
-                model.editingRule = RuleEditorTarget(rule: rule)
-            }
+            Button("编辑") { model.editingRule = RuleEditorTarget(rule: rule) }
             Button("复制") {
-                model.addRule(Rule(
-                    name: "\(rule.name) 副本",
-                    network: rule.network,
-                    place: rule.place,
-                    action: rule.action,
-                    enabled: rule.enabled
-                ))
+                model.addRule(Rule(name: "\(rule.name) 副本", network: rule.network,
+                                   place: rule.place, action: rule.action, enabled: rule.enabled))
             }
             Divider()
             Button(rule.enabled ? "停用" : "启用") {
@@ -585,9 +545,7 @@ struct RuleRow: View {
             Button("上移") { model.moveRule(id: rule.id, offset: -1) }
             Button("下移") { model.moveRule(id: rule.id, offset: 1) }
             Divider()
-            Button("删除", role: .destructive) {
-                model.deleteRule(id: rule.id)
-            }
+            Button("删除", role: .destructive) { model.deleteRule(id: rule.id) }
         }
     }
 
@@ -600,261 +558,150 @@ struct RuleRow: View {
 
     private var networkDescription: String {
         switch rule.network {
-        case let .wifi(ssid):
-            return ssid
+        case let .wifi(ssid): return ssid
         case let .wired(interfaceName):
-            return model.availableServices
-                .first { $0.device == interfaceName }?.name ?? interfaceName
+            return model.availableServices.first { $0.device == interfaceName }?.name ?? interfaceName
         }
     }
 }
 
-// MARK: - Overview
+// MARK: - Current status
 
 struct OverviewView: View {
     @ObservedObject var model: AppModel
-    let onAddRule: () -> Void
-    let onShowRules: () -> Void
-    let onShowSettings: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showDetails = false
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                statusCard
-                if needsLocationHint {
-                    locationHint
-                }
-                detailsCard
-                if let error = model.lastError {
-                    errorBanner(error)
-                }
-                actionRow
-                if model.settings.rules.isEmpty {
-                    emptyRulesCard
-                }
-            }
-            .padding(24)
-            .frame(maxWidth: 760, alignment: .leading)
-        }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear {
-            model.refreshEffectiveProxy()
-            model.refreshEndpointReachability()
-        }
-    }
-
-    private var statusCard: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: model.menuBarIcon)
-                .font(.system(size: 30, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(statusTint)
-                .frame(width: 46, height: 46)
-                .background(statusTint.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(model.currentNetworkDescription)
-                    .font(.title2.weight(.semibold))
-                HStack(spacing: 7) {
-                    StatusDot(color: proxyColor)
-                    Text(model.systemProxySummary)
-                        .foregroundStyle(.secondary)
-                }
-                .font(.callout)
-                Text(model.statusText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 12)
-
-            StatusBadge(text: stateBadgeText,
-                        systemImage: stateBadgeIcon,
-                        tint: stateBadgeTint)
-        }
-        .padding(20)
-        .background(.regularMaterial,
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6))
-        }
-    }
-
-    private var needsLocationHint: Bool {
-        model.currentNetwork?.kind == .wifi
-            && model.currentNetwork?.ssid == nil
-            && !model.locationAuthorized
-    }
-
-    private var locationHint: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "location.slash")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("无法读取 Wi-Fi 名称").font(.callout.weight(.medium))
-                Text("Wi-Fi 规则需要定位权限才能匹配当前网络名称。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("允许定位") { model.requestLocationAccess() }
-            Button("打开设置") { onShowSettings() }
-        }
-        .padding(12)
-        .background(Color.orange.opacity(0.08),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var detailsCard: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 0) {
-                detailLine(icon: "point.3.connected.trianglepath.dotted", title: "代理端点") {
-                    HStack(spacing: 7) {
-                        Text(model.settings.endpoint.display)
-                            .monospacedDigit()
-                        StatusDot(color: endpointColor)
-                        Text(model.endpointStatusText)
-                            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                NetworkSculpture(networkIcon: networkIcon, proxyIcon: proxyIcon,
+                                 tint: proxyTint, paused: model.isPaused,
+                                 identity: model.systemProxySummary + model.currentNetworkDescription + String(model.isPaused))
+                    .scaleEffect(0.46)
+                    .frame(width: 120, height: 92)
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("系统代理").font(.callout).foregroundStyle(palette.secondary)
+                        Text(proxyTitle)
+                            .font(.system(size: 23, weight: .bold, design: .rounded))
+                            .foregroundStyle(palette.text)
+                            .id(proxyTitle).transition(.opacity)
+                        Spacer()
+                        Button { showDetails.toggle() } label: {
+                            Image(systemName: "info.circle")
+                                .font(.body).foregroundStyle(palette.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("运行详情")
+                        .accessibilityLabel("运行详情")
+                        .popover(isPresented: $showDetails, arrowEdge: .bottom) { diagnostics }
+                    }
+                    Label(model.currentNetworkDescription, systemImage: networkIcon)
+                        .font(.callout.weight(.medium)).foregroundStyle(palette.secondary)
+                        .lineLimit(2).textSelection(.enabled)
+                    HStack(spacing: 10) {
+                        Toggle("自动切换", isOn: Binding(
+                            get: { !model.isPaused }, set: { model.setPaused(!$0) }
+                        ))
+                        .toggleStyle(.switch).controlSize(.small).tint(palette.mint).fixedSize()
+                        Text(model.isPaused ? "已暂停，保持当前代理" : "网络变化时自动匹配")
+                            .font(.caption).foregroundStyle(palette.secondary)
                     }
                 }
-                Divider().padding(.vertical, 8)
-                detailLine(icon: "clock.arrow.circlepath", title: "最近状态") {
-                    Text(model.statusText).foregroundStyle(.secondary)
-                }
-                Divider().padding(.vertical, 8)
-                detailLine(icon: "list.bullet.rectangle", title: "规则") {
-                    Text("\(model.settings.rules.count) 条，启用 \(model.enabledRuleCount) 条")
-                        .foregroundStyle(.secondary)
+            }
+            .padding(16)
+            .background {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(LinearGradient(colors: [palette.mint.opacity(scheme == .dark ? 0.13 : 0.08),
+                                                  palette.surface, palette.coral.opacity(0.09)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .overlay { RoundedRectangle(cornerRadius: 20).stroke(palette.line, lineWidth: 1) }
+
+            if model.currentNetwork?.kind == .wifi && !model.locationAuthorized {
+                LocationAccessHint(service: model.locationService)
+                    .padding(14).background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
+            }
+            if let error = model.lastError {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(palette.coral)
+                    Text(error).font(.callout)
                     Spacer()
-                    Button("管理规则") { onShowRules() }
-                        .buttonStyle(.borderless)
+                    Button("检查设置") { model.showingPreferences = true }
                 }
+                .padding(14).background(palette.coral.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
             }
-            .padding(8)
-        } label: {
-            Label("状态详情", systemImage: "info.circle")
+            if model.endpointReachable == false && model.settings.rules.contains(where: { $0.enabled && $0.action == .on }) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "bolt.slash").foregroundStyle(palette.coral)
+                    Text("代理地址不可连接，请检查客户端或修改地址。")
+                        .font(.callout).foregroundStyle(palette.secondary)
+                    Spacer()
+                    Button("修改地址") { model.showingPreferences = true }
+                }
+                .padding(14).background(palette.coral.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
+        .padding(.horizontal, 16).padding(.top, 10)
+        .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.85), value: showDetails)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.systemProxySummary)
+    }
+
+    private var diagnostics: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(model.statusText, systemImage: "clock.arrow.circlepath")
+            HStack {
+                Label("\(model.settings.endpoint.display) · \(model.endpointStatusText)",
+                      systemImage: "network")
+                Spacer()
+                Button("立即应用") { model.applyNow() }.disabled(model.isPaused)
+                Button("刷新") { model.refreshNetwork(); model.refreshEndpointReachability() }
+            }
+            Text("只控制系统代理，TUN 模式不受影响。")
+                .font(.caption)
+        }
+        .font(.callout).foregroundStyle(palette.secondary)
+        .padding(16).background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
+        .frame(width: 460)
+    }
+
+    private var networkIcon: String {
+        switch model.currentNetwork?.kind {
+        case .wifi: return "wifi"
+        case .wired: return "cable.connector"
+        case .other: return "network"
+        case nil: return "network.slash"
         }
     }
 
-    private var actionRow: some View {
-        HStack(spacing: 10) {
-            Button {
-                model.applyNow()
-            } label: {
-                Label("立即应用", systemImage: "bolt.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isPaused)
-
-            Button {
-                onAddRule()
-            } label: {
-                Label("添加规则", systemImage: "plus")
-            }
-
-            Spacer()
-
-            Toggle("暂停自动切换", isOn: Binding(
-                get: { model.isPaused },
-                set: { model.setPaused($0) }
-            ))
-            .toggleStyle(.switch)
-        }
-    }
-
-    private var emptyRulesCard: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "wand.and.stars")
-                .font(.system(size: 30, weight: .light))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tint)
-                .frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("还没有规则").font(.headline)
-                Text("连接网络后添加第一条规则，workProxy 会在网络稳定 3 秒后自动执行。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("添加规则") { onAddRule() }
-                .buttonStyle(.borderedProminent)
-        }
-        .padding(18)
-        .background(.quaternary.opacity(0.6),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("执行失败").font(.headline)
-                Text(message).font(.callout).foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.1),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func detailLine<Content: View>(
-        icon: String, title: String, @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Label(title, systemImage: icon)
-                .foregroundStyle(.secondary)
-                .frame(width: 110, alignment: .leading)
-            content()
-        }
-    }
-
-    private var statusTint: Color {
-        if model.lastError != nil { return .orange }
-        if model.isPaused { return .orange }
+    private var proxyTitle: String {
         switch model.systemProxyState {
-        case .on: return .green
-        case .off: return .secondary
-        case .mixed: return .orange
-        case .unknown: return .secondary
+        case .on: return "已开启"
+        case .off: return "已关闭"
+        case .mixed: return "部分开启"
+        case .unknown: return "等待读取"
         }
     }
 
-    private var proxyColor: Color {
+    private var proxyTint: Color {
         switch model.systemProxyState {
-        case .on: return .green
-        case .off: return .secondary
-        case .mixed: return .orange
-        case .unknown: return .secondary
+        case .on: return palette.mint
+        case .off: return palette.coral
+        case .mixed: return palette.coral
+        case .unknown: return palette.secondary
         }
     }
 
-    private var endpointColor: Color {
-        switch model.endpointReachable {
-        case true: return .green
-        case false: return .red
-        case nil: return .secondary
+    private var proxyIcon: String {
+        switch model.systemProxyState {
+        case .on: return "network"
+        case .off: return "network.slash"
+        case .mixed: return "exclamationmark.triangle"
+        case .unknown: return "questionmark"
         }
-    }
-
-    private var stateBadgeText: String {
-        if model.lastError != nil { return "执行失败" }
-        return model.isPaused ? "已暂停" : "自动切换中"
-    }
-
-    private var stateBadgeIcon: String {
-        if model.lastError != nil { return "exclamationmark.circle.fill" }
-        return model.isPaused ? "pause.circle.fill" : "checkmark.circle.fill"
-    }
-
-    private var stateBadgeTint: Color {
-        if model.lastError != nil { return .orange }
-        return model.isPaused ? .orange : .green
     }
 }
 
@@ -862,11 +709,12 @@ struct OverviewView: View {
 
 struct RulesView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = ""
 
-    private var isSearching: Bool {
-        !query.trimmedForInput.isEmpty
-    }
+    private var isSearching: Bool { !query.trimmedForInput.isEmpty }
 
     private var filteredRules: [Rule] {
         let text = query.trimmedForInput
@@ -874,11 +722,9 @@ struct RulesView: View {
         return model.settings.rules.filter { rule in
             if rule.name.localizedCaseInsensitiveContains(text) { return true }
             switch rule.network {
-            case let .wifi(ssid):
-                return ssid.localizedCaseInsensitiveContains(text)
+            case let .wifi(ssid): return ssid.localizedCaseInsensitiveContains(text)
             case let .wired(interfaceName):
-                let service = model.availableServices
-                    .first { $0.device == interfaceName }?.name ?? interfaceName
+                let service = model.availableServices.first { $0.device == interfaceName }?.name ?? interfaceName
                 return service.localizedCaseInsensitiveContains(text)
                     || interfaceName.localizedCaseInsensitiveContains(text)
             }
@@ -886,69 +732,80 @@ struct RulesView: View {
     }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("我的网络").font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(palette.text)
+                    Text("\(model.enabledRuleCount) 条规则已启用")
+                        .font(.caption).foregroundStyle(palette.secondary)
+                }
+                Spacer()
+                if !model.settings.rules.isEmpty {
+                    TextField("搜索规则", text: $query)
+                        .textFieldStyle(.roundedBorder).frame(width: 140)
+                    Button {
+                        model.editingRule = RuleEditorTarget(rule: nil)
+                    } label: {
+                        Label("添加规则", systemImage: "plus")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(palette.surface)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(palette.mint, in: Capsule())
+                    }
+                    .buttonStyle(PressFeedbackStyle())
+                    .help("添加规则（⌘N）")
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 16)
+
             if model.settings.rules.isEmpty {
-                EmptyStateView(
-                    systemImage: "list.bullet.rectangle",
-                    title: "还没有规则",
-                    message: "规则按从上到下的顺序匹配。连接目标网络后，workProxy 会自动切换系统代理。",
-                    actionTitle: "添加规则"
-                ) {
+                EmptyStateView(systemImage: "point.3.connected.trianglepath.dotted",
+                               title: "换个网络，自动切换",
+                               message: "为常用网络选好代理状态，连接时就会自动匹配。",
+                               actionTitle: model.currentNetwork == nil ? "添加第一条规则" : "为当前网络设置规则") {
                     model.editingRule = RuleEditorTarget(rule: nil)
                 }
             } else {
                 List {
-                    Section {
-                        ForEach(filteredRules) { rule in
-                            RuleRow(model: model, rule: rule)
-                        }
-                        .onMove(perform: isSearching ? nil : { source, destination in
-                            model.moveRules(from: source, to: destination)
-                        })
-                    } header: {
-                        Text("从上到下匹配，第一条命中的规则生效")
+                    ForEach(filteredRules) { rule in
+                        RuleRow(model: model, rule: rule)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12))
                     }
+                    .onMove(perform: isSearching ? nil : { source, destination in
+                        model.moveRules(from: source, to: destination)
+                    })
                 }
-                .listStyle(.inset)
+                .listStyle(.plain).scrollContentBackground(.hidden)
+                .padding(.horizontal, 10)
                 .overlay {
                     if filteredRules.isEmpty {
-                        Text("没有匹配的规则")
+                        Label("没有匹配的规则", systemImage: "magnifyingglass")
                             .foregroundStyle(.secondary)
                     }
                 }
+                HStack {
+                    Text("从上到下匹配 · 拖动调整优先级").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 24).padding(.bottom, 16)
             }
         }
-        .navigationTitle("规则")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.editingRule = RuleEditorTarget(rule: nil)
-                } label: {
-                    Label("添加规则", systemImage: "plus")
-                }
-                .help("添加规则（⌘N）")
-            }
-            ToolbarItem {
-                Button {
-                    model.refreshNetwork()
-                } label: {
-                    Label("刷新网络", systemImage: "arrow.clockwise")
-                }
-                .help("刷新网络（⌘R）")
-            }
-        }
-        .searchable(text: $query, prompt: "搜索名称、Wi-Fi 或接口")
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.settings.rules)
     }
 }
 
 // MARK: - Preferences
 
-struct PreferencesView: View {
+struct ProxyEndpointSettings: View {
     @ObservedObject var model: AppModel
-
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var endpointHost: String
     @State private var endpointPort: String
     @State private var endpointError: String?
+    @State private var editingEndpoint = false
 
     init(model: AppModel) {
         self.model = model
@@ -957,298 +814,366 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        Form {
-            Section("代理") {
-                LabeledContent("代理端点") {
-                    HStack(spacing: 6) {
-                        TextField("127.0.0.1", text: $endpointHost)
-                            .labelsHidden()
-                            .frame(width: 140)
-                        Text(":")
-                        TextField("7897", text: $endpointPort)
-                            .labelsHidden()
-                            .monospacedDigit()
-                            .frame(width: 70)
-                        Button("保存") { saveEndpoint() }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "network").foregroundStyle(.tint)
+                Text(model.settings.endpoint.display).monospacedDigit()
+                    .lineLimit(1).help(model.settings.endpoint.display)
+                Spacer()
+                if model.endpointReachable == nil {
+                    ProgressView().controlSize(.small)
+                }
+                Text(model.endpointStatusText).foregroundStyle(.secondary)
+                Button(editingEndpoint ? "收起" : "修改") {
+                    if !editingEndpoint {
+                        endpointHost = model.settings.endpoint.host
+                        endpointPort = String(model.settings.endpoint.port)
+                        endpointError = nil
                     }
+                    editingEndpoint.toggle()
                 }
-
-                LabeledContent("连接状态") {
-                    HStack(spacing: 7) {
-                        StatusDot(color: endpointColor)
-                        Text(model.endpointStatusText)
-                        Button("重新检测") { model.refreshEndpointReachability() }
-                            .buttonStyle(.borderless)
-                    }
-                }
-
-                if let endpointError {
-                    Text(endpointError).font(.caption).foregroundStyle(.red)
-                }
-
-                Text("开启系统代理前会先检查该端口；不可连接时不会写入系统代理，避免断网。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .buttonStyle(.borderless)
             }
-
-            Section("自动切换") {
-                Toggle("暂停自动切换", isOn: Binding(
-                    get: { model.isPaused },
-                    set: { model.setPaused($0) }
-                ))
-                Toggle("登录时启动", isOn: Binding(
-                    get: { model.settings.launchAtLogin },
-                    set: { model.setLaunchAtLogin($0) }
-                ))
-                LabeledContent("登录项") {
-                    Text(model.loginItemStatus).foregroundStyle(.secondary)
+            if editingEndpoint {
+                TextField("主机", text: $endpointHost).textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("代理主机")
+                TextField("端口", text: $endpointPort).monospacedDigit().textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("代理端口")
+                HStack {
+                    if let endpointError {
+                        Text(endpointError).font(.caption).foregroundStyle(.red)
+                    }
+                    Spacer()
+                    Button("保存地址") { saveEndpoint() }
                 }
             }
-
-            Section("权限") {
-                permissionRow(
-                    title: "定位",
-                    granted: model.locationAuthorized,
-                    detail: "读取 Wi-Fi 名称与判断地点",
-                    request: { model.requestLocationAccess() },
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"
-                )
-                permissionRow(
-                    title: "通知",
-                    granted: model.notificationAuthorized,
-                    detail: "仅在执行失败时通知一次",
-                    request: { model.requestNotificationAccess() },
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.notifications"
-                )
-            }
-
-            Section("数据") {
-                LabeledContent("设置文件") {
-                    HStack {
-                        Text(JSONSettingsStore.defaultURL().path)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Button("在 Finder 中显示") {
-                            NSWorkspace.shared.activateFileViewerSelecting(
-                                [JSONSettingsStore.defaultURL()]
-                            )
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
+            if model.endpointReachable == false {
+                Label("请检查代理客户端是否运行，或修改地址；关闭代理不受影响。",
+                      systemImage: "exclamationmark.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("重新检测") { model.refreshEndpointReachability() }
             }
         }
-        .formStyle(.grouped)
-        .navigationTitle("设置")
-    }
-
-    private func permissionRow(
-        title: String, granted: Bool, detail: String,
-        request: @escaping () -> Void, settingsURL: String
-    ) -> some View {
-        LabeledContent(title) {
-            HStack(spacing: 8) {
-                StatusBadge(
-                    text: granted ? "已授权" : "未授权",
-                    systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle",
-                    tint: granted ? .green : .orange
-                )
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-                if !granted {
-                    Button("请求", action: request)
-                }
-                Button("系统设置") {
-                    if let url = URL(string: settingsURL) {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                .buttonStyle(.borderless)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: editingEndpoint)
+        .onChange(of: model.settings.endpoint) { endpoint in
+            if !editingEndpoint {
+                endpointHost = endpoint.host
+                endpointPort = String(endpoint.port)
             }
-        }
-    }
-
-    private var endpointColor: Color {
-        switch model.endpointReachable {
-        case true: return .green
-        case false: return .red
-        case nil: return .secondary
         }
     }
 
     private func saveEndpoint() {
+        guard !endpointHost.trimmedForInput.isEmpty,
+              let port = Int(endpointPort), (1...65535).contains(port) else {
+            endpointError = "主机不能为空，端口需在 1–65535 之间。"
+            return
+        }
         if model.setEndpoint(host: endpointHost, portText: endpointPort) {
             endpointError = nil
+            editingEndpoint = false
         } else {
-            endpointError = "格式无效：主机不能为空，端口需在 1–65535 之间。"
+            endpointError = model.lastError ?? "保存失败，请重试。"
         }
     }
 }
 
-// MARK: - About
-
-struct AboutView: View {
-    private var version: String {
-        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "版本 \(short) (\(build))"
-    }
+struct PreferencesView: View {
+    @Environment(\.colorScheme) private var scheme
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 96, height: 96)
-            Text("workProxy").font(.largeTitle.bold())
-            Text(version).font(.callout).foregroundStyle(.secondary)
-            Text("按网络与地点规则自动开关 macOS 系统代理。")
-                .foregroundStyle(.secondary)
-
-            Divider().frame(width: 260).padding(.vertical, 4)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Label("只操作系统代理，不控制 TUN 模式", systemImage: "checkmark.shield")
-                Label("规则命中后直接读写系统代理设置", systemImage: "slider.horizontal.3")
-                Label("客户端未监听端口时拒绝开启，避免断网", systemImage: "bolt.slash")
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "gearshape").font(.title).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("设置").font(.title2.weight(.semibold))
+                    Text("配置一次，所有网络规则共用。")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .padding(24)
+            Form {
+                Section("代理地址") {
+                    ProxyEndpointSettings(model: model)
+                }
+                Section("Clash / Mihomo 联动") {
+                    FlClashSettingsView(model: model)
+                }
+                Section {
+                    Toggle("登录时启动", isOn: Binding(
+                        get: { model.settings.launchAtLogin },
+                        set: { model.setLaunchAtLogin($0) }
+                    ))
+                    Text(model.loginItemStatus).font(.caption).foregroundStyle(.secondary)
+                }
+                Section("权限") {
+                    LocationPermissionRow(service: model.locationService)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("失败通知", systemImage: "bell")
+                            Text("规则执行失败时提醒，可选")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(model.notificationStatus.permissionLabel)
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button(model.notificationStatus == .notDetermined ? "允许通知" : "系统设置") {
+                            model.requestNotificationAccess()
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
 
-            Link("GitHub 仓库", destination: URL(string: "https://github.com/sawyerfeng/workProxy")!)
-                .padding(.top, 6)
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            Divider()
+            HStack {
+                if let error = model.lastError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+                Spacer()
+                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            .padding(20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
-        .navigationTitle("关于")
+        .background(palette.canvas)
+        .tint(palette.mint)
+        .frame(width: 560, height: 580)
+        .task { await model.refreshPermissions() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await model.refreshPermissions() }
+        }
     }
+
+
 }
 
 // MARK: - Root
 
-enum SidebarSection: String, CaseIterable, Identifiable {
-    case overview
-    case rules
-    case preferences
-    case about
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .overview: return "概览"
-        case .rules: return "规则"
-        case .preferences: return "设置"
-        case .about: return "关于"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .overview: return "network"
-        case .rules: return "list.bullet.rectangle"
-        case .preferences: return "gearshape"
-        case .about: return "info.circle"
-        }
-    }
-}
-
 struct RootView: View {
     @ObservedObject var model: AppModel
-    @State private var selection: SidebarSection? = .overview
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var savedRuleName: String?
 
     var body: some View {
-        NavigationSplitView {
-            List(SidebarSection.allCases, selection: $selection) { section in
-                Label(section.title, systemImage: section.icon)
-                    .tag(section)
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
-        } detail: {
-            detail
-        }
-        .navigationTitle((selection ?? .overview).title)
-        .frame(minWidth: 820, minHeight: 560)
-        .sheet(item: $model.editingRule) { target in
-            RuleEditorView(
-                existing: target.rule,
-                services: model.availableServices,
-                currentNetwork: model.currentNetwork,
-                knownWiFiNetworks: model.knownWiFiNetworks,
-                locationService: model.locationService,
-                onRefreshWiFi: { model.refreshWiFiNetworks() }
-            ) { rule in
-                if target.rule == nil {
-                    model.addRule(rule)
-                } else {
-                    model.updateRule(rule)
-                }
-                model.editingRule = nil
-            }
-        }
-        .onAppear { model.start() }
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        switch selection ?? .overview {
-        case .overview:
-            OverviewView(
-                model: model,
-                onAddRule: { model.editingRule = RuleEditorTarget(rule: nil) },
-                onShowRules: { selection = .rules },
-                onShowSettings: { selection = .preferences }
-            )
-        case .rules:
+        VStack(spacing: 0) {
+            OverviewView(model: model)
             RulesView(model: model)
-        case .preferences:
+        }
+        .background(ConsolePalette(scheme: scheme).canvas)
+        .tint(ConsolePalette(scheme: scheme).mint)
+        .frame(minWidth: 640, minHeight: 540)
+        .toolbar {
+            ToolbarItem {
+                Button { model.showingPreferences = true } label: {
+                    Label("设置", systemImage: "gearshape")
+                }
+                .help("设置（⌘,）")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let savedRuleName {
+                Label("已保存 · \(savedRuleName)", systemImage: "checkmark.circle.fill")
+                    .font(.callout).lineLimit(2)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(20)
+                    .allowsHitTesting(false)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .scale(scale: 0.9)).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.7), value: savedRuleName)
+        .task(id: savedRuleName) {
+            guard savedRuleName != nil else { return }
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            savedRuleName = nil
+        }
+        .sheet(item: $model.editingRule) { target in
+            RuleEditorView(existing: target.rule,
+                           services: model.availableServices,
+                           currentNetwork: model.currentNetwork,
+                           knownWiFiNetworks: model.knownWiFiNetworks,
+                           locationService: model.locationService,
+                           onRefreshWiFi: { model.refreshNetwork() }) { rule in
+                let saved = target.rule == nil ? model.addRule(rule) : model.updateRule(rule)
+                guard saved else { return model.lastError ?? "保存失败，请重试。" }
+                savedRuleName = rule.name
+                return nil
+            }
+        }
+        .sheet(isPresented: $model.showingPreferences) {
             PreferencesView(model: model)
-        case .about:
-            AboutView()
         }
     }
 }
 
 // MARK: - Menu bar
 
-private struct MenuContent: View {
+struct MenuBarPanel: View {
     @ObservedObject var model: AppModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
+
+    private var proxyOn: Bool { model.systemProxyState == .on }
+
+    private var stateTitle: String {
+        if model.changingProxy { return "正在切换" }
+        switch model.systemProxyState {
+        case .on: return "已开启"
+        case .off: return "已关闭"
+        case .mixed: return "部分开启"
+        case .unknown: return "状态未知"
+        }
+    }
 
     var body: some View {
-        Text(model.currentNetworkDescription)
-        Text(model.systemProxySummary)
-        if let error = model.lastError {
-            Text(error)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("workProxy")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                Spacer()
+                Button { openMain(preferences: true) } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13))
+                        .foregroundStyle(palette.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(palette.surface, in: Circle())
+                }
+                .buttonStyle(PressFeedbackStyle())
+                .accessibilityLabel("设置")
+                .disabled(model.editingRule != nil)
+            }
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 12) {
+                    Image(systemName: proxyOn ? "network" : "network.slash")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(proxyOn ? palette.mint : palette.secondary)
+                        .frame(width: 52, height: 52)
+                        .background(palette.mint.opacity(proxyOn ? 0.12 : 0.04),
+                                    in: RoundedRectangle(cornerRadius: 16))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("系统代理").font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(palette.secondary)
+                        Text(stateTitle).font(.system(size: 25, weight: .semibold, design: .rounded))
+                    }
+                    Spacer()
+                    if model.changingProxy {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Circle().fill(proxyOn ? palette.mint : palette.secondary.opacity(0.5))
+                            .frame(width: 7, height: 7)
+                    }
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                    Text(model.currentNetworkDescription).lineLimit(1)
+                }
+                .font(.system(size: 12)).foregroundStyle(palette.secondary)
+
+                HStack(spacing: 4) {
+                    proxyButton("开启", icon: "power", enabled: true)
+                    proxyButton("关闭", icon: "power", enabled: false)
+                }
+                .padding(4)
+                .background(palette.canvas.opacity(0.65), in: RoundedRectangle(cornerRadius: 13))
+                .disabled(model.changingProxy)
+            }
+            .padding(16)
+            .background {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(LinearGradient(colors: [palette.mint.opacity(0.08), palette.surface],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .overlay { RoundedRectangle(cornerRadius: 20).stroke(palette.line, lineWidth: 1) }
+
+            HStack(spacing: 10) {
+                Image(systemName: model.isPaused ? "hand.raised" : "arrow.triangle.2.circlepath")
+                    .font(.system(size: 14)).foregroundStyle(palette.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.isPaused ? "手动控制" : "自动切换")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(model.isPaused ? "自动规则已暂停" : "跟随网络规则")
+                        .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                }
+                Spacer()
+                Button(model.isPaused ? "恢复自动" : "暂停") {
+                    model.setPaused(!model.isPaused)
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(palette.mint)
+                .buttonStyle(.plain)
+                .disabled(model.changingProxy)
+            }
+            .padding(.horizontal, 2)
+
+            if let error = model.lastError {
+                Label(error, systemImage: "exclamationmark.circle")
+                    .font(.caption).foregroundStyle(palette.coral)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Button { openMain() } label: {
+                    HStack(spacing: 5) {
+                        Text("管理规则")
+                        Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .semibold))
+                    }
+                }
+                Spacer()
+                Text(model.settings.flClash == nil ? "系统代理" : "系统代理 + TUN")
+                    .font(.system(size: 10))
+                Button { NSApp.terminate(nil) } label: {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .frame(width: 24, height: 24)
+                }
+                .help("退出 workProxy").accessibilityLabel("退出 workProxy")
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(palette.secondary)
+            .buttonStyle(.plain)
         }
-        Divider()
-        Button {
-            model.applyNow()
-        } label: {
-            Label("立即应用", systemImage: "bolt.fill")
+        .padding(18)
+        .frame(width: 320)
+        .background(palette.canvas)
+        .foregroundStyle(palette.text)
+        .tint(palette.mint)
+        .onAppear { model.refreshEffectiveProxy() }
+    }
+
+    private func proxyButton(_ title: String, icon: String, enabled: Bool) -> some View {
+        let active = enabled ? proxyOn : model.systemProxyState == .off
+        return Button { model.setProxyManually(enabled) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: active ? "checkmark" : icon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title).font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(active ? palette.canvas : palette.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .background(active ? palette.mint : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 9))
+            .contentShape(RoundedRectangle(cornerRadius: 9))
         }
-        .disabled(model.isPaused)
-        Button {
-            model.setPaused(!model.isPaused)
-        } label: {
-            Label(model.isPaused ? "恢复自动切换" : "暂停自动切换",
-                  systemImage: model.isPaused ? "play.circle" : "pause.circle")
-        }
-        Divider()
-        Button {
-            openWindow(id: "settings")
-            NSApp.activate(ignoringOtherApps: true)
-        } label: {
-            Label("打开设置…", systemImage: "gearshape")
-        }
-        .keyboardShortcut(",", modifiers: .command)
-        Button {
-            NSApp.terminate(nil)
-        } label: {
-            Label("退出 workProxy", systemImage: "power")
-        }
-        .keyboardShortcut("q", modifiers: .command)
+        .buttonStyle(PressFeedbackStyle())
+        .accessibilityLabel(title + "代理")
+        .help("立即" + title + "代理，并暂停自动规则")
+    }
+
+    private func openMain(preferences: Bool = false) {
+        dismiss()
+        model.showingPreferences = preferences
+        openWindow(id: "settings")
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -1263,6 +1188,7 @@ struct WorkProxyCommands: Commands {
         CommandGroup(replacing: .appSettings) {
             Button("设置…") {
                 openWindow(id: "settings")
+                model.showingPreferences = true
                 NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(",", modifiers: .command)
@@ -1271,7 +1197,9 @@ struct WorkProxyCommands: Commands {
             Button("添加规则") {
                 openWindow(id: "settings")
                 model.editingRule = RuleEditorTarget(rule: nil)
+                NSApp.activate(ignoringOtherApps: true)
             }
+            .disabled(model.showingPreferences || model.editingRule != nil)
             .keyboardShortcut("n", modifiers: .command)
         }
         CommandGroup(after: .toolbar) {
@@ -1294,14 +1222,15 @@ struct WorkProxyApp: App {
             RootView(model: model)
                 .onAppear { model.start() }
         }
-        .defaultSize(width: 880, height: 620)
+        .defaultSize(width: 680, height: 600)
         .windowResizability(.contentMinSize)
         .commands { WorkProxyCommands(model: model) }
 
         MenuBarExtra("workProxy", systemImage: model.menuBarIcon) {
-            MenuContent(model: model)
+            MenuBarPanel(model: model)
                 .onAppear { model.start() }
         }
+        .menuBarExtraStyle(.window)
     }
 }
 

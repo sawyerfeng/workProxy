@@ -11,7 +11,7 @@
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
-    <key>LSUIElement</key><true/>
+    <key>LSUIElement</key><false/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>用于读取 Wi-Fi 名称，并按地点区分同名网络。</string>

@@ -3,10 +3,14 @@ import UserNotifications
 import WorkProxyCore
 
 final class NotificationService: FailureNotifying, @unchecked Sendable {
-    private let center = UNUserNotificationCenter.current()
+    private var center: UNUserNotificationCenter { .current() }
 
     func requestAuthorization() async -> Bool {
         (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+    }
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await center.notificationSettings().authorizationStatus
     }
 
     func isAuthorized() async -> Bool {

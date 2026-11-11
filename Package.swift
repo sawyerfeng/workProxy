@@ -8,6 +8,7 @@ let package = Package(
     targets: [
         .target(name: "WorkProxyCore"),
         .executableTarget(name: "WorkProxy", dependencies: ["WorkProxyCore"]),
-        .testTarget(name: "WorkProxyCoreTests", dependencies: ["WorkProxyCore"])
+        .testTarget(name: "WorkProxyCoreTests", dependencies: ["WorkProxyCore"]),
+        .testTarget(name: "WorkProxyTests", dependencies: ["WorkProxy"])
     ]
 )

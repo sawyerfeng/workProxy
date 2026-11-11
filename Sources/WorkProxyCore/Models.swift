@@ -157,6 +157,7 @@ public enum RuleDecision: Equatable, Sendable {
 }
 
 public struct AppSettings: Codable, Equatable, Sendable {
+    public var flClash: FlClashSettings?
     public var endpoint: ProxyEndpoint
     public var rules: [Rule]
     public var paused: Bool
@@ -190,4 +191,14 @@ public enum LocationUnavailableReason: String, Codable, Sendable {
 public enum LocationResult: Equatable, Sendable {
     case fix(LocationFix)
     case unavailable(LocationUnavailableReason)
+}
+
+public struct FlClashSettings: Codable, Equatable, Sendable {
+    public var address: String
+    public var secret: String
+
+    public init(address: String, secret: String) {
+        self.address = address
+        self.secret = secret
+    }
 }
