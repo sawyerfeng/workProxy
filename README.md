@@ -47,7 +47,7 @@ Release 同时提供源码 ZIP 与 SHA-256 校验文件。
 ```sh
 git clone https://github.com/sawyerfeng/workProxy.git
 cd workProxy
-git switch master
+git switch main
 ./scripts/build-app.sh
 open dist/workProxy.app
 ```
@@ -161,7 +161,7 @@ swift test --disable-sandbox
 
 ### 介绍网站
 
-静态网站位于 `site/`，无构建依赖。GitHub Actions 在 `master` 上的网页文件更新时部署到 [GitHub Pages](https://sawyerfeng.github.io/workProxy/)。
+静态网站位于 `site/`，无构建依赖。GitHub Actions 在 `main` 上的网页文件更新时部署到 [GitHub Pages](https://sawyerfeng.github.io/workProxy/)。
 
 本地预览：
 
