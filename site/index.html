@@ -52,6 +52,44 @@
 <p class="demo-note">仅作演示，不修改网络设置。</p>
 </div>
 </section>
+<section class="journey" aria-label="网络自动切换过程">
+<div class="journey-sticky wrap">
+<div class="journey-heading"><h2>从公司，到家。</h2><div class="journey-controls" role="group" aria-label="演示阶段"><button data-phase="0" aria-pressed="true">公司</button><button data-phase="1" aria-pressed="false">切换中</button><button data-phase="2" aria-pressed="false">到家</button></div></div>
+<div class="journey-panel" data-stage="0">
+<div class="journey-grid" aria-hidden="true"></div>
+<div class="journey-caption"><span id="journey-label">公司网络</span><strong id="journey-state" aria-live="polite">关闭系统代理</strong></div>
+<svg class="route-diagram" viewBox="0 0 900 320" role="img" aria-label="网络连接经规则匹配，切换系统代理状态">
+<defs>
+<linearGradient id="route-mint"><stop stop-color="#8ce6bf" stop-opacity=".25"/><stop offset="1" stop-color="#8ce6bf"/></linearGradient>
+<linearGradient id="route-coral"><stop stop-color="#eaaa87" stop-opacity=".25"/><stop offset="1" stop-color="#eaaa87"/></linearGradient>
+</defs>
+<g fill="none" stroke="#ffffff12" stroke-width="2">
+<path d="M150 90H265Q300 90 300 125V125Q300 160 335 160H400"/>
+<path d="M150 230H265Q300 230 300 195V195Q300 160 335 160H400"/>
+<path d="M500 160H565Q600 160 600 125V125Q600 90 635 90H750"/>
+<path d="M500 160H565Q600 160 600 195V195Q600 230 635 230H750"/>
+</g>
+<g fill="none" stroke-width="3" stroke-linecap="round">
+<path class="route-lit office-route" pathLength="1" d="M150 90H265Q300 90 300 125V125Q300 160 335 160H400"/>
+<path class="route-lit home-route" pathLength="1" d="M150 230H265Q300 230 300 195V195Q300 160 335 160H400"/>
+<path class="route-lit off-route" pathLength="1" d="M500 160H565Q600 160 600 125V125Q600 90 635 90H750"/>
+<path class="route-lit on-route" pathLength="1" d="M500 160H565Q600 160 600 195V195Q600 230 635 230H750"/>
+</g>
+<g class="diagram-node office-node"><rect x="50" y="54" width="100" height="72" rx="18"/><path d="M87 96V75H113V96M83 96H117M94 82H97M103 82H106M94 89H97M103 89H106"/><text x="100" y="153">公司网络</text></g>
+<g class="diagram-node home-node"><rect x="50" y="194" width="100" height="72" rx="18"/><path d="M84 230L100 216L116 230M90 226V244H110V226M97 244V233H103V244"/><text x="100" y="293">家庭网络</text></g>
+<circle class="core-halo" cx="450" cy="160" r="70"/>
+<circle class="core-progress" cx="450" cy="160" r="68" pathLength="1"/>
+<rect class="core-box" x="401" y="111" width="98" height="98" rx="27"/>
+<image href="./icon.png" x="409" y="119" width="82" height="82"/>
+<text class="core-label" x="450" y="263">匹配网络规则</text>
+<g class="diagram-node off-node"><rect x="750" y="54" width="100" height="72" rx="18"/><path d="M788 90H812"/><text x="800" y="153">代理关闭</text></g>
+<g class="diagram-node on-node"><rect x="750" y="194" width="100" height="72" rx="18"/><path d="M788 231L797 240L813 222"/><text x="800" y="293">代理开启</text></g>
+</svg>
+<div class="journey-bottom"><p id="journey-detail">命中公司规则，保持直连。</p><span>滚动或点选，查看切换过程</span></div>
+<div class="journey-track"><span></span></div>
+</div>
+</div>
+</section>
 <section id="features" class="features wrap section">
 <div class="section-heading"><h2>让网络适应你的一天。</h2></div>
 <div class="feature-grid">

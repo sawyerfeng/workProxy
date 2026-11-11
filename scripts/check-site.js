@@ -11,13 +11,22 @@
   assert(state() === '已开启', 'Home must enable proxy');
   select('cafe');
   assert(state() === '已开启', 'Unmatched network must retain enabled state');
-  assert(document.querySelectorAll('[aria-pressed="true"]').length === 1, 'One selected scene');
+  assert(document.querySelectorAll('[data-scene][aria-pressed="true"]').length === 1, 'One selected scene');
   select('home');
   assert(document.querySelectorAll('h1').length === 1, 'One main heading');
   assert(document.documentElement.scrollWidth <= innerWidth, 'No horizontal overflow');
   document.querySelectorAll('a[href^="#"]').forEach(link => {
     assert(document.getElementById(link.hash.slice(1)), 'Anchor target exists: ' + link.hash);
   });
+  const phase = index => document.querySelector('[data-phase="' + index + '"]').click();
+  phase(1);
+  assert(document.querySelector('#journey-state').textContent === '等待网络稳定', 'Transition waits for stability');
+  phase(2);
+  assert(document.querySelector('.journey-panel').dataset.stage === '2', 'Home route active');
+  assert(document.querySelector('#journey-state').textContent === '开启系统代理', 'Home enables proxy');
+  phase(0);
+  assert(document.querySelector('#journey-state').textContent === '关闭系统代理', 'Office disables proxy');
+  assert(document.querySelectorAll('[data-phase][aria-pressed="true"]').length === 1, 'One active phase');
   const faq = document.querySelector('details');
   faq.open = true;
   assert(faq.querySelector('p').getBoundingClientRect().height > 0, 'FAQ answer visible');
