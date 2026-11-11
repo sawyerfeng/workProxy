@@ -18,15 +18,18 @@
   document.querySelectorAll('a[href^="#"]').forEach(link => {
     assert(document.getElementById(link.hash.slice(1)), 'Anchor target exists: ' + link.hash);
   });
-  const phase = index => document.querySelector('[data-phase="' + index + '"]').click();
-  phase(1);
-  assert(document.querySelector('#journey-state').textContent === '等待网络稳定', 'Transition waits for stability');
-  phase(2);
-  assert(document.querySelector('.journey-panel').dataset.stage === '2', 'Home route active');
-  assert(document.querySelector('#journey-state').textContent === '开启系统代理', 'Home enables proxy');
-  phase(0);
-  assert(document.querySelector('#journey-state').textContent === '关闭系统代理', 'Office disables proxy');
-  assert(document.querySelectorAll('[data-phase][aria-pressed="true"]').length === 1, 'One active phase');
+  const route = name => document.querySelector('button[data-route="' + name + '"]').click();
+  route('proxy');
+  assert(document.querySelector('.journey-panel').dataset.route === 'proxy', 'Proxy route active');
+  assert(document.querySelector('#journey-state').textContent === '经过代理', 'Home uses proxy route');
+  route('direct');
+  assert(document.querySelector('#journey-state').textContent === '直接连接', 'Office uses direct route');
+  assert(document.querySelectorAll('button[data-route][aria-pressed="true"]').length === 1, 'One active route');
+  const pause = document.querySelector('.motion-toggle');
+  pause.click();
+  assert(document.querySelector('.route-diagram').animationsPaused(), 'Pause stops packets');
+  assert(pause.getAttribute('aria-pressed') === 'true', 'Pause state announced');
+  pause.click();
   const faq = document.querySelector('details');
   faq.open = true;
   assert(faq.querySelector('p').getBoundingClientRect().height > 0, 'FAQ answer visible');
