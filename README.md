@@ -32,6 +32,16 @@
 
 ## 快速开始
 
+### 下载安装包
+
+前往 [GitHub Releases](https://github.com/sawyerfeng/workProxy/releases/latest)，下载 `workProxy-0.1.0-macos-arm64.dmg`，打开后将 **workProxy.app** 拖入 **Applications**。
+
+当前安装包面向 **Apple Silicon（M 系列）Mac**，最低系统版本 macOS 13；Intel Mac 可尝试从源码构建，尚未实机验证。安装包使用临时签名，未经过 Apple 公证，首次打开可能被系统安全检查拦截。
+
+Release 同时提供源码 ZIP 与 SHA-256 校验文件。
+
+### 从源码构建
+
 需要 **macOS 13+、Swift 6 工具链及 Xcode 或 Command Line Tools**。项目没有第三方 Swift 包依赖。
 
 ```sh
