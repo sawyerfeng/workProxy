@@ -41,24 +41,48 @@ func renderPNG(pixels: Int) -> Data {
     let radius = size * 0.225
     let background = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
     let gradient = NSGradient(colors: [
-        NSColor(srgbRed: 0.23, green: 0.55, blue: 1.00, alpha: 1),
-        NSColor(srgbRed: 0.06, green: 0.27, blue: 0.70, alpha: 1)
+        NSColor(srgbRed: 0.12, green: 0.23, blue: 0.25, alpha: 1),
+        NSColor(srgbRed: 0.035, green: 0.075, blue: 0.10, alpha: 1)
     ])!
-    gradient.draw(in: background, angle: -90)
+    gradient.draw(in: background, angle: -65)
+    NSColor(srgbRed: 0.60, green: 0.88, blue: 0.80, alpha: 0.22).setStroke()
+    background.lineWidth = size * 0.008
+    background.stroke()
 
-    // SF Symbol 使用调色板配置直接画成白色。
-    let symbolConfig = NSImage.SymbolConfiguration(pointSize: size * 0.42, weight: .semibold)
-        .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
-    guard let symbol = NSImage(systemSymbolName: "network",
-                               accessibilityDescription: "workProxy")?
-        .withSymbolConfiguration(symbolConfig) else {
-        fatalError("无法加载 network 符号")
+    let mint = NSColor(srgbRed: 0.48, green: 0.94, blue: 0.77, alpha: 1)
+    let pale = NSColor(srgbRed: 0.84, green: 0.94, blue: 0.91, alpha: 1)
+    func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+        NSPoint(x: size * x, y: size * y)
     }
-    let symbolSize = symbol.size
-    symbol.draw(in: NSRect(x: (size - symbolSize.width) / 2,
-                           y: (size - symbolSize.height) / 2,
-                           width: symbolSize.width,
-                           height: symbolSize.height))
+
+    // 两条相向路径保留开放空间，在 16 px 下仍能辨识切换方向。
+    let upper = NSBezierPath()
+    upper.move(to: point(0.28, 0.53))
+    upper.curve(to: point(0.43, 0.67),
+                controlPoint1: point(0.28, 0.62), controlPoint2: point(0.34, 0.67))
+    upper.line(to: point(0.72, 0.67))
+    upper.move(to: point(0.62, 0.77))
+    upper.line(to: point(0.72, 0.67))
+    upper.line(to: point(0.62, 0.57))
+    upper.lineWidth = size * 0.067
+    upper.lineCapStyle = .round
+    upper.lineJoinStyle = .round
+    mint.setStroke()
+    upper.stroke()
+
+    let lower = NSBezierPath()
+    lower.move(to: point(0.72, 0.47))
+    lower.curve(to: point(0.57, 0.33),
+                controlPoint1: point(0.72, 0.38), controlPoint2: point(0.66, 0.33))
+    lower.line(to: point(0.28, 0.33))
+    lower.move(to: point(0.38, 0.43))
+    lower.line(to: point(0.28, 0.33))
+    lower.line(to: point(0.38, 0.23))
+    lower.lineWidth = size * 0.067
+    lower.lineCapStyle = .round
+    lower.lineJoinStyle = .round
+    pale.setStroke()
+    lower.stroke()
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
