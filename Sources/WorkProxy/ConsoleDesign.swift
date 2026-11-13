@@ -2,6 +2,24 @@ import AppKit
 import SwiftUI
 import WorkProxyCore
 
+extension AppearanceMode {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .automatic: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .automatic: return "自动切换"
+        case .light: return "浅色"
+        case .dark: return "深色"
+        }
+    }
+}
+
 // MARK: - Palette
 
 /// 取自应用图标：深青底色、薄荷色“出站”箭头（代理）、雾白色“回程”箭头（直连）。
@@ -139,6 +157,7 @@ struct RouteMark: View {
     var flowing = false
     var dimmed: Double = 0.2
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     @State private var drawn: CGFloat = 1
     @State private var spin: Double = 0
 
@@ -147,8 +166,8 @@ struct RouteMark: View {
             let side = min(geometry.size.width, geometry.size.height)
             let width = RouteArrow.lineWidth(for: side)
             ZStack {
-                arrow(.outbound, color: Brand.mint, lit: state == .proxy || state == .partial, width: width)
-                arrow(.inbound, color: Brand.mist, lit: state == .direct || state == .partial, width: width)
+                arrow(.outbound, color: ConsolePalette(scheme: scheme).mint, lit: state == .proxy || state == .partial, width: width)
+                arrow(.inbound, color: ConsolePalette(scheme: scheme).mist, lit: state == .direct || state == .partial, width: width)
             }
             .frame(width: side, height: side)
             .rotationEffect(.degrees(spin))
@@ -211,6 +230,7 @@ struct BrandBadge: View {
 
     var body: some View {
         RouteMark(state: state, dimmed: 0.25)
+            .environment(\.colorScheme, .dark)
             .padding(size * 0.16)
             .frame(width: size, height: size)
             .background(Brand.tileGradient, in: RoundedRectangle(cornerRadius: size * 0.27, style: .continuous))
@@ -225,10 +245,13 @@ struct BrandBadge: View {
 struct HeroBackground: View {
     let accent: Color
     var cornerRadius: CGFloat = 22
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Brand.tileGradient)
+            .fill(scheme == .dark ? Brand.tileGradient : LinearGradient(
+                colors: [Color(red: 0.84, green: 0.94, blue: 0.90), .white],
+                startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay(alignment: .topLeading) {
                 Circle()
                     .fill(RadialGradient(colors: [accent.opacity(0.28), .clear],
@@ -240,10 +263,10 @@ struct HeroBackground: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(LinearGradient(colors: [Brand.mist.opacity(0.22), Brand.mist.opacity(0.04)],
+                    .strokeBorder(LinearGradient(colors: [ConsolePalette(scheme: scheme).mist.opacity(0.22), ConsolePalette(scheme: scheme).mist.opacity(0.04)],
                                                  startPoint: .top, endPoint: .bottom), lineWidth: 1)
             }
-            .shadow(color: Brand.ink.opacity(0.25), radius: 18, y: 10)
+            .shadow(color: Brand.ink.opacity(scheme == .dark ? 0.25 : 0.06), radius: 18, y: 10)
     }
 }
 
@@ -267,19 +290,21 @@ struct RouteSwitch: View {
     var height: CGFloat = 38
     let onSelect: (Bool) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
     @Namespace private var thumb
     @State private var hovered: Bool? = nil
 
     var body: some View {
         HStack(spacing: 4) {
-            segment(enabled: true, title: "代理", direction: .outbound, color: Brand.mint)
-            segment(enabled: false, title: "直连", direction: .inbound, color: Brand.mist)
+            segment(enabled: true, title: "代理", direction: .outbound, color: palette.mint)
+            segment(enabled: false, title: "直连", direction: .inbound, color: palette.mist)
         }
         .padding(4)
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: height * 0.36 + 4, style: .continuous))
+        .background(palette.text.opacity(0.07), in: RoundedRectangle(cornerRadius: height * 0.36 + 4, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: height * 0.36 + 4, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(palette.line, lineWidth: 1)
         }
         .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.78), value: state)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: hovered)
@@ -296,13 +321,13 @@ struct RouteSwitch: View {
                     ProgressView().controlSize(.mini).tint(Brand.mist)
                 } else {
                     RouteArrow(direction: direction)
-                        .stroke(active ? Brand.ink : color.opacity(0.8),
+                        .stroke(active ? (scheme == .dark ? Brand.ink : .white) : color.opacity(0.8),
                                 style: StrokeStyle(lineWidth: 1.9, lineCap: .round, lineJoin: .round))
                         .frame(width: 15, height: 15)
                 }
                 Text(title).font(.system(size: 13, weight: .semibold, design: .rounded))
             }
-            .foregroundStyle(active ? Brand.ink : Brand.mist.opacity(hovered == enabled ? 1 : 0.75))
+            .foregroundStyle(active ? (scheme == .dark ? Brand.ink : .white) : palette.mist.opacity(hovered == enabled ? 1 : 0.75))
             .frame(maxWidth: .infinity)
             .frame(height: height)
             .background {
@@ -331,19 +356,21 @@ struct RouteSwitch: View {
 struct HeroChip: View {
     let systemImage: String
     let text: String
-    var tint: Color = Brand.muted
+    var tint: Color? = nil
+    @Environment(\.colorScheme) private var scheme
+    private var palette: ConsolePalette { ConsolePalette(scheme: scheme) }
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage).font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(tint ?? palette.secondary)
             Text(text).lineLimit(1).truncationMode(.middle)
         }
         .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(Brand.mist.opacity(0.9))
+        .foregroundStyle(palette.mist)
         .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(Color.white.opacity(0.07), in: Capsule())
-        .overlay { Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1) }
+        .background(palette.text.opacity(0.07), in: Capsule())
+        .overlay { Capsule().stroke(palette.line, lineWidth: 1) }
     }
 }
 
@@ -371,10 +398,10 @@ struct ProxyActionChoices: View {
                                     style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
                             .frame(width: 26, height: 26)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(action == .on ? "开启代理" : "关闭代理")
+                            Text(action.displayName)
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(selected ? palette.text : palette.secondary)
-                            Text(action == .on ? "流量经由代理客户端" : "关闭系统代理设置")
+                            Text(action == .on ? "使用已配置的代理地址" : "停止使用系统代理地址")
                                 .font(.caption).foregroundStyle(palette.secondary)
                         }
                         Spacer(minLength: 4)

@@ -156,7 +156,12 @@ public enum RuleDecision: Equatable, Sendable {
     case none
 }
 
+public enum AppearanceMode: String, Codable, CaseIterable, Sendable {
+    case automatic, light, dark
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
+    public var appearance: AppearanceMode?
     public var flClash: FlClashSettings?
     public var endpoint: ProxyEndpoint
     public var rules: [Rule]

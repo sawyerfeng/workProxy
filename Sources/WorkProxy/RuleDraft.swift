@@ -9,7 +9,7 @@ enum RuleNetworkKind: String, CaseIterable, Hashable {
 }
 
 struct RuleDraft {
-    var name = ""
+    private var legacyName: String?
     var networkKind: RuleNetworkKind = .wifi
     var ssid = ""
     var interfaceName = ""
@@ -39,7 +39,7 @@ struct RuleDraft {
             }
             return
         }
-        name = rule.name
+        legacyName = rule.name
         action = rule.action
         enabled = rule.enabled
         switch rule.network {
@@ -87,9 +87,7 @@ struct RuleDraft {
             place = nil
         }
 
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedName = trimmedName.isEmpty ? "\(network.displayName) · \(action.displayName)" : trimmedName
-        return Rule(id: id, name: resolvedName, network: network,
+        return Rule(id: id, name: legacyName ?? network.displayName, network: network,
                     place: place, action: action, enabled: enabled)
     }
 }

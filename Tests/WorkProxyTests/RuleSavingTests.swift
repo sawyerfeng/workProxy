@@ -22,6 +22,8 @@ final class RuleSavingTests: XCTestCase {
         XCTAssertEqual(model.settings, initial)
         XCTAssertFalse(model.setEndpoint(host: "localhost", portText: "7890"))
         XCTAssertEqual(model.settings, initial)
+        model.setAppearance(.light)
+        XCTAssertEqual(model.settings, initial)
         XCTAssertNotNil(model.lastError)
     }
 

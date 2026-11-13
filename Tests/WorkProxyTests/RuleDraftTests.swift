@@ -3,33 +3,31 @@ import WorkProxyCore
 @testable import WorkProxy
 
 final class RuleDraftTests: XCTestCase {
-    func testCurrentWifiNeedsOnlyActionAndGeneratesName() throws {
+    func testCurrentWifiNeedsOnlyAction() throws {
         var draft = RuleDraft(rule: nil, currentNetwork:
             NetworkIdentity(interfaceName: "en0", kind: .wifi, ssid: "Office"))
         draft.action = .off
         let rule = try XCTUnwrap(draft.makeRule(id: UUID()))
         XCTAssertEqual(rule.network, .wifi(ssid: "Office"))
-        XCTAssertEqual(rule.name, "Wi-Fi：Office · 关闭系统代理")
+        XCTAssertEqual(rule.name, "Wi-Fi：Office")
         XCTAssertEqual(rule.action, .off)
         XCTAssertTrue(rule.enabled)
         XCTAssertNil(rule.place)
     }
 
-    func testMissingNetworkCannotBeSavedWithAutomaticName() {
+    func testMissingNetworkCannotBeSaved() {
         for network in [nil, NetworkIdentity(interfaceName: "en0", kind: .wifi),
                         NetworkIdentity(interfaceName: "en0", kind: .wifi, ssid: "  \n")] {
             XCTAssertNil(RuleDraft(rule: nil, currentNetwork: network).makeRule(id: UUID()))
         }
     }
 
-    func testWiredNetworkAndCustomName() throws {
+    func testWiredNetworkNeedsNoCustomName() throws {
         var draft = RuleDraft(rule: nil, currentNetwork:
             NetworkIdentity(interfaceName: "en7", serviceName: "USB Ethernet", kind: .wired))
         let generated = try XCTUnwrap(draft.makeRule(id: UUID()))
         XCTAssertEqual(generated.network, .wired(interfaceName: "en7"))
-        XCTAssertEqual(generated.name, "有线：en7 · 开启系统代理")
-        draft.name = "  公司网线  "
-        XCTAssertEqual(draft.makeRule(id: UUID())?.name, "公司网线")
+        XCTAssertEqual(generated.name, "有线：en7")
         draft.interfaceName = ""
         XCTAssertNil(draft.makeRule(id: UUID()))
     }
