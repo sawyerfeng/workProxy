@@ -1,22 +1,66 @@
 const names = { office: '公司有线网络', home: '家庭 Wi-Fi', cafe: '咖啡馆 Wi-Fi' };
 let proxyEnabled = true;
-document.querySelectorAll('[data-scene]').forEach(button => {
-  button.addEventListener('click', () => {
-    const scene = button.dataset.scene;
-    if (scene !== 'cafe') proxyEnabled = scene === 'home';
-    document.querySelectorAll('[data-scene]').forEach(item => {
-      item.setAttribute('aria-pressed', String(item === button));
-    });
-    document.querySelectorAll('[data-rule]').forEach(item => {
-      item.classList.toggle('active', item.dataset.rule === scene);
-    });
-    document.querySelector('#network-name').textContent = names[scene];
-    document.querySelector('#proxy-state').textContent = proxyEnabled ? '已开启' : '已关闭';
-    document.querySelector('#demo-result').textContent = scene === 'cafe'
-      ? '没有匹配规则，保持此前的代理状态。'
-      : scene === 'home' ? '已匹配家庭网络规则，开启系统代理。' : '已匹配公司网络规则，关闭系统代理。';
-  });
+let automatic = true;
+let currentScene = 'home';
+const sceneButtons = [...document.querySelectorAll('[data-scene]')];
+const proxyButtons = [...document.querySelectorAll('[data-proxy]')];
+const ruleRows = [...document.querySelectorAll('[data-rule]')];
+const autoButton = document.querySelector('#demo-auto');
+const searchButton = document.querySelector('#demo-search-toggle');
+const searchInput = document.querySelector('#demo-search');
+
+function renderDemo() {
+  sceneButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.scene === currentScene)));
+  proxyButtons.forEach(button => button.setAttribute('aria-pressed', String((button.dataset.proxy === 'on') === proxyEnabled)));
+  ruleRows.forEach(row => row.classList.toggle('active', automatic && row.dataset.rule === currentScene));
+  document.querySelector('#network-name').textContent = names[currentScene];
+  document.querySelector('#proxy-state').textContent = proxyEnabled ? '代理已开启' : '代理已关闭';
+  autoButton.setAttribute('aria-pressed', String(automatic));
+  autoButton.textContent = automatic ? '自动切换' : '恢复自动';
+  document.querySelector('#demo-result').textContent = !automatic
+    ? '已暂停自动切换，保持当前代理状态。'
+    : currentScene === 'cafe' ? '没有匹配规则，保持此前的代理状态。'
+    : currentScene === 'home' ? '已匹配家庭网络规则，开启系统代理。' : '已匹配公司网络规则，关闭系统代理。';
+}
+
+sceneButtons.forEach(button => button.addEventListener('click', () => {
+  currentScene = button.dataset.scene;
+  if (automatic && currentScene !== 'cafe') proxyEnabled = currentScene === 'home';
+  renderDemo();
+}));
+proxyButtons.forEach(button => button.addEventListener('click', () => {
+  proxyEnabled = button.dataset.proxy === 'on';
+  automatic = false;
+  renderDemo();
+}));
+autoButton.addEventListener('click', () => {
+  automatic = !automatic;
+  if (automatic && currentScene !== 'cafe') proxyEnabled = currentScene === 'home';
+  renderDemo();
 });
+function filterDemoRules() {
+  const query = searchInput.value.trim().toLocaleLowerCase();
+  ruleRows.forEach(row => { row.hidden = !row.textContent.toLocaleLowerCase().includes(query); });
+  document.querySelector('#demo-no-results').hidden = ruleRows.some(row => !row.hidden);
+}
+function closeDemoSearch() {
+  searchInput.hidden = true;
+  searchInput.value = '';
+  searchButton.setAttribute('aria-expanded', 'false');
+  filterDemoRules();
+  searchButton.focus();
+}
+searchButton.addEventListener('click', () => {
+  if (!searchInput.hidden) { closeDemoSearch(); return; }
+  searchInput.hidden = false;
+  searchButton.setAttribute('aria-expanded', 'true');
+  searchInput.focus();
+});
+searchInput.addEventListener('input', filterDemoRules);
+searchInput.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeDemoSearch();
+});
+renderDemo();
 
 const panel = document.querySelector('.journey-panel');
 const diagram = document.querySelector('.route-diagram');

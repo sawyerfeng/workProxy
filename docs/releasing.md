@@ -1,6 +1,6 @@
 # 发布 workProxy
 
-1. 更新 `Resources/Info.plist` 的短版本号和递增的构建号，并更新 `CHANGELOG.zh.md`、README 下载文件名。
+1. 更新 `Resources/Info.plist` 的短版本号和递增的构建号，并更新 `CHANGELOG.zh.md`、README 和 `site/index.html` 的下载链接、版本号；功能或配置流程变化时同步 `site/guide.html`。
 2. 运行 `swift test --disable-sandbox`，通过 PR 合入 main。
 3. 在干净的 main 检出中运行 `./scripts/package-release.sh`。
 4. 对合入后的提交创建 `v<版本>` 标签，发布 `dist/release/<版本>/` 中的 DMG、应用 ZIP、源码 ZIP、`appcast.xml` 和 `SHA256SUMS.txt`。GitHub Release 必须是正式版本，以便 `releases/latest/download/appcast.xml` 指向它。

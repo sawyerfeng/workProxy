@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c1518">
+<meta name="description" content="workProxy 0.2.0 使用指南：首次安装、代理地址、网络规则，以及 FlClash / Clash Verge Rev 的 HTTP 控制器、密钥和 TUN 联动配置。">
+<title>使用与配置指南 — workProxy</title>
+<link rel="icon" href="./icon.png">
+<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./guide.css">
+</head>
+<body class="guide-page">
+<a class="skip" href="#main">跳至正文</a>
+<header class="nav wrap"><a class="brand" href="./"><img src="./icon.png" width="36" height="36" alt="">workProxy</a><nav aria-label="主导航"><a href="./">返回首页</a><a class="github" href="https://github.com/sawyerfeng/workProxy/releases/latest">下载最新版 ↗</a></nav></header>
+<div class="guide-layout wrap">
+<aside class="guide-sidebar"><nav aria-label="文档目录"><a href="#install">01 安装与权限</a><a href="#proxy">02 配置代理地址</a><a href="#rules">03 创建网络规则</a><a href="#controller">04 Clash 控制器配置</a><a href="#flclash">FlClash</a><a href="#verge">Clash Verge Rev</a><a href="#verify">05 测试与排错</a><a href="#updates">06 更新与日常使用</a></nav></aside>
+<main id="main" class="guide-content">
+<div class="guide-heading"><span class="release-label">使用指南 · 0.2.0</span><h1>装好之后，<br>从这里开始。</h1><p>先让系统代理正常工作，再按需配置 TUN 联动。</p><a class="text-link" href="#controller">只想配置 Clash 控制器？直接跳转 ↗</a></div>
+
+<section id="install"><h2>01 / 安装与权限</h2>
+<ol><li>从<a href="https://github.com/sawyerfeng/workProxy/releases/latest">发布页</a>下载 <code>workProxy-0.2.0-macos-arm64.dmg</code>，将 <strong>workProxy.app</strong> 拖入“应用程序”。当前安装包适用于 M 系列 Mac，系统要求 macOS 13 或更高版本。</li><li>启动 workProxy，允许定位权限。macOS 读取 Wi-Fi 名称也需要定位权限；不用地点条件时，同样可能需要授权。系统定位服务也应处于开启状态。</li><li>通知权限可选，用于执行失败提醒。登录启动可在“设置”中开启。</li></ol>
+<p>当前安装包使用临时签名，尚未经过 Apple 公证。若系统提示无法验证开发者，先核对下载来源和发布说明；确认后，按 macOS 的“隐私与安全性”提示处理。不要全局关闭系统安全保护。</p>
+</section>
+
+<section id="proxy"><h2>02 / 配置代理地址</h2>
+<p>先启动 FlClash、Clash Verge Rev 或你已有的代理客户端，确认客户端本身能正常联网。workProxy 不提供节点、订阅或代理内核。</p>
+<ol><li>在代理客户端中找到 <strong>Mixed / 混合端口</strong>。workProxy 会将同一地址和端口写入 HTTP、HTTPS、SOCKS 系统代理，优先使用同时支持这些连接方式的混合端口。</li><li>打开 workProxy 右上角齿轮 → <strong>代理地址 → 修改</strong>。</li><li>主机填写 <code>127.0.0.1</code>，端口填写客户端的实际混合端口，例如 <code>7897</code> 或 <code>7890</code>。主机框里不用加 <code>http://</code>。</li><li>保存地址，确认显示“可连接”。只有这个步骤不需要 TUN 联动，也不需要控制器密钥。</li></ol>
+<p>这里填的是<strong>流量经过的代理端口</strong>，不是控制器端口。只想按网络切换系统代理，可以直接进入下一步。</p>
+</section>
+
+<section id="rules"><h2>03 / 创建网络规则</h2>
+<ol><li>在主窗口点击 <strong>＋</strong>。能识别当前网络时，会自动带入它；需要其他 Wi-Fi 或有线接口时，点击“更换网络”。Wi-Fi 名称无法读取时，可以从列表选择或手动输入。</li><li>选择 <strong>开启系统代理</strong> 或 <strong>关闭系统代理</strong>。例如公司网络关闭，家庭 Wi-Fi 开启。</li><li>需要区分同名 Wi-Fi 时，打开 <strong>限定生效地点（可选）</strong>，搜索并选中地址，再设置范围。只输入地址但没有选中结果，不能保存地点规则。</li><li>点击 <strong>保存规则</strong>。规则默认启用；保存不会立即执行，下一次网络事件会匹配。需要立即验证时，在顶部“…”运行详情中点击“立即应用”，并确认自动切换已开启。</li></ol>
+<p>规则从上到下匹配，使用第一条符合条件的已启用规则。把带地点条件的具体规则放在同网络的普通规则前面；可拖动调整优先级，双击编辑，右键复制、移动或删除。</p>
+<p>网络变化稳定 3 秒后再执行；没有匹配规则时保持现状。位置变化本身不会单独触发切换。</p>
+</section>
+
+<section id="controller"><h2>04 / Clash“控制台”到底填什么？</h2>
+<p>Clash 网页面板、Mihomo 控制器和代理端口是三件事。workProxy 通过<strong>本机 HTTP 控制器 API</strong>切换 TUN，不需要你安装或打开网页面板。</p>
+<figure class="port-diagram" role="img" aria-label="代理地址使用混合端口处理流量；TUN 联动使用 HTTP 控制器端口发送开关命令。两者用途和端口不同。"><div><span>系统代理</span><b aria-hidden="true">→</b><strong>混合端口<span>例如 127.0.0.1:7897</span></strong><span>承载网络流量</span></div><div><span>TUN 联动</span><b aria-hidden="true">→</b><strong>HTTP 控制器<span>例如 127.0.0.1:9090</span></strong><span>接收控制命令</span></div><figcaption>端口以客户端的实际配置为准。</figcaption></figure>
+<div class="table-scroll"><table><caption>三个地址怎么区分</caption><thead><tr><th>你看到的内容</th><th>示例</th><th>在 workProxy 填哪里</th></tr></thead><tbody><tr><td>Mixed / 混合代理端口</td><td><code>127.0.0.1:7897</code></td><td>设置 → 代理地址，主机和端口分开填</td></tr><tr><td>外部控制器 / External Controller</td><td><code>http://127.0.0.1:9090</code></td><td>设置 → Clash / Mihomo 联动 → HTTP 控制器地址</td></tr><tr><td>网页控制面板 / Dashboard</td><td><code>http://127.0.0.1:9090/ui/</code> 或独立网页面板的网址</td><td>不填。去掉网页路径，使用客户端提供的 API 地址</td></tr></tbody></table></div>
+<p>workProxy 0.2.0 仅接受 <code>http://127.0.0.1:端口</code>、<code>http://localhost:端口</code> 或本机 IPv6 回环地址。不支持远程 IP、HTTPS、WebSocket、Unix Socket / Pipe，也不能带 <code>/ui/</code>、<code>/configs</code> 等路径。控制器端口可能是 <code>9090</code>、<code>9097</code> 或其他值，不能靠猜。</p>
+
+<h3 id="flclash">在 FlClash 中准备控制器</h3>
+<ol><li>打开 FlClash 的配置 / 覆写设置，找到 <strong>外部控制器（External Controller）</strong>。不同版本的入口或措辞可能有差异，以“外部控制器”为搜索关键词。</li><li>开启 HTTP 外部控制器，保留本机回环监听地址，记录实际端口。客户端显示 <code>127.0.0.1:9090</code> 时，在 workProxy 中写成 <code>http://127.0.0.1:9090</code>。</li><li>若客户端设置了 <strong>secret / 访问密钥</strong>，复制它；未设置密钥时，workProxy 的密钥框可以留空。不要填节点密码或订阅链接。</li><li>在 FlClash 中完成 TUN 所需的系统授权，确认客户端能够手动开启、关闭 TUN。workProxy 不会替客户端安装服务或绕过系统授权。</li></ol>
+<p>FlClash 可能用覆写项生成运行配置。优先使用客户端提供的设置，不要只改会被订阅更新或重启覆盖的临时配置文件。可以对照 <a href="https://github.com/chen08209/FlClash">FlClash 官方项目</a>确认你所用版本的入口。</p>
+
+<h3 id="verge">在 Clash Verge Rev 中准备控制器</h3>
+<ol><li>打开 <strong>设置 → Clash 设置 → 外部控制</strong>，开启外部控制器。入口名称以当前客户端版本为准。</li><li>记录 <strong>外部控制器监听地址</strong>和 <strong>API 访问密钥</strong>。监听地址应为本机地址；复制后，在 workProxy 的控制器地址前补上 <code>http://</code>。</li><li>将 API 密钥原样填入 workProxy，不要加 <code>Bearer </code> 前缀，也不要把密钥拼到地址里。</li><li>按客户端要求启用服务模式 / 授权 TUN，先确认在 Clash Verge Rev 内能手动控制 TUN，再测试联动。</li></ol>
+<p>Clash Verge Rev 自己的界面能操作内核，不代表 HTTP 控制器已开启。workProxy 使用 Mihomo API；Clash Verge Rev 的完整联动尚未做本项目实机验证，具体入口与限制请同时参考<a href="https://www.clashverge.dev/">客户端官方文档</a>。</p>
+
+<details class="guide-details"><summary>直接维护 Mihomo YAML 时怎么写？</summary><p>在当前生效的本地配置或客户端支持的覆写中设置以下字段。保留原来的其他配置，不要用这两行替换整份文件。</p><pre><code>external-controller: 127.0.0.1:9090
+secret: "REPLACE_WITH_YOUR_OWN_RANDOM_SECRET"</code></pre><p>将示例 secret 替换成自己的长随机密钥，并按客户端要求重载。这里只需要本机访问，不必开放局域网监听。字段含义见 <a href="https://wiki.metacubex.one/config/general/#外部控制-api">Mihomo 官方配置说明</a>。</p></details>
+
+<h3>最后，在 workProxy 中填写</h3>
+<ol><li>齿轮 → <strong>Clash / Mihomo 联动</strong>，打开 <strong>系统代理与 TUN 同步开关</strong>。</li><li>填入完整的本机 <strong>HTTP 控制器地址</strong>和原样复制的 <strong>控制器密钥</strong>。</li><li>点击 <strong>测试连接</strong>。成功时会显示 TUN 当前已开启或已关闭；这个测试只读取状态，不会切换 TUN。</li><li>点击 <strong>保存联动设置</strong>。测试成功不等于已保存；保存也不会立即切换。</li></ol>
+<p>启用联动后，主窗口、菜单栏的手动开关和规则动作都会同步开关系统代理与 TUN。未启用联动时，只切换系统代理，其他工具的 TUN 状态不会因此改变。</p>
+<p>控制器密钥保存在仅当前用户可读的本机设置文件中，当前未使用钥匙串。不要把密钥、订阅链接或完整设置文件贴到截图和公开 issue。若客户端还启用了“系统代理守护”等持续接管功能，请检查是否会覆盖 workProxy 的设置。</p>
+</section>
+
+<section id="verify"><h2>05 / 测试与排错</h2>
+<p>第一次配置完，先测试控制器连接，再验证实际开关。手动点击“代理”或“直连”会暂停自动规则；验证结束后，点击“恢复自动”或打开自动切换，重新匹配当前网络。</p>
+<div class="table-scroll"><table><caption>遇到问题先查这里</caption><thead><tr><th>现象</th><th>先检查什么</th></tr></thead><tbody><tr><td>代理地址“不可连接”</td><td>客户端内核是否正在运行，混合端口是否填对；不要把 9090 等控制器端口填进代理地址。</td></tr><tr><td>控制器连接被拒绝 / 超时</td><td>HTTP 外部控制是否开启，客户端是否运行，监听端口是否实际生效。客户端的 Socket / Pipe 连接不能代替 HTTP API。</td></tr><tr><td>HTTP 401 / 403</td><td>API 密钥是否与客户端一致，是否误填了订阅或节点密码，是否多了 Bearer 前缀、空格或换行。</td></tr><tr><td>HTTP 404 / 控制器响应无效</td><td>是否填成了代理端口、网页面板或带路径的网址；确认这是支持 GET /configs 的 Mihomo HTTP API。</td></tr><tr><td>测试成功，但 TUN 开不起来</td><td>“测试连接”只读状态。先在客户端手动验证 TUN 权限、服务和驱动，再保存联动并触发一次实际动作。</td></tr><tr><td>系统代理已更新，但 TUN 切换未确认</td><td>这是部分失败。系统代理和 TUN 的修改不是原子操作；检查客户端当前实际状态、控制器连接和 TUN 权限。</td></tr><tr><td>Wi-Fi 名称读不到</td><td>检查系统定位服务，以及 workProxy 的定位授权；也可先手动输入 SSID。不能保存空的网络条件。</td></tr><tr><td>规则保存了却没有执行</td><td>保存不会立即切换。检查自动切换、规则启用状态和优先级；可从“…”运行详情中立即应用。</td></tr><tr><td>关闭系统代理后流量仍经过代理</td><td>检查未联动的 TUN、PAC、自动代理发现、应用自定义代理及其他客户端。workProxy 不会关闭所有这些独立设置。</td></tr></tbody></table></div>
+</section>
+
+<section id="updates"><h2>06 / 更新与日常使用</h2>
+<ul><li><strong>更新：</strong>0.2.0 默认每 6 小时检查正式版本。发现新版本后会提醒，确认后下载、验证签名、安装并重启。也可以从 workProxy 菜单 →“检查更新…”或设置 →“软件更新”手动检查。</li><li><strong>从 0.1.0 升级：</strong>需要先手动安装一次 0.2.0，后续可在应用内更新。请从可写的“应用程序”文件夹运行，而不是直接从只读 DMG 中运行。</li><li><strong>暂停：</strong>只暂停自动匹配，不改变当前代理。恢复自动时会立即重新匹配当前网络。</li><li><strong>外观：</strong>设置 →“外观”，选择浅色、深色或自动切换；自动切换会跟随 macOS 系统外观。</li><li><strong>备份：</strong>配置位于 <code>~/Library/Application Support/workProxy/settings.json</code>，包含规则、地点及可能存在的控制器密钥。备份时当作私人文件保管。</li></ul>
+<p>需要反馈问题时，请附版本、客户端名称、复现步骤和脱敏后的错误信息。不要附密钥或精确私人地址。</p>
+<div class="guide-actions"><a class="button primary" href="https://github.com/sawyerfeng/workProxy/releases/latest">下载最新版 ↗</a><a class="text-link" href="https://github.com/sawyerfeng/workProxy/issues">反馈问题 ↗</a><a class="text-link" href="./">返回首页 ↗</a></div>
+</section>
+</main>
+</div>
+<footer class="wrap"><a class="brand" href="./"><img src="./icon.png" width="28" height="28" alt="">workProxy</a><div><a href="https://github.com/sawyerfeng/workProxy">源代码 ↗</a><a href="#main">回到顶部 ↑</a></div></footer>
+</body>
+</html>
