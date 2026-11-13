@@ -71,15 +71,6 @@ final class AppModel: ObservableObject {
 
     var isPaused: Bool { settings.paused }
 
-    var menuBarIcon: String {
-        if lastError != nil { return "exclamationmark.triangle" }
-        switch systemProxyState {
-        case .on: return "network"
-        case .off: return "network.slash"
-        case .mixed, .unknown: return "questionmark.circle"
-        }
-    }
-
     var currentNetworkDescription: String {
         guard let network = currentNetwork else { return "无主要网络" }
         switch network.kind {

@@ -14,7 +14,7 @@ final class ConsolePaletteTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(contrast(color, surface), 4.5, "\(scheme) text on surface")
                 XCTAssertGreaterThanOrEqual(contrast(color, canvas), 4.5, "\(scheme) text on canvas")
             }
-            for foreground in [palette.mint, palette.coral] {
+            for foreground in [palette.mint, palette.mist, palette.coral] {
                 let color = try components(foreground)
                 let badge = zip(color, surface).map { 0.12 * $0 + 0.88 * $1 }
                 XCTAssertGreaterThanOrEqual(contrast(color, badge), 4.5, "\(scheme) action badge")
