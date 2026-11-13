@@ -39,6 +39,7 @@ final class AppModel: ObservableObject {
     }
 
     let locationService: LocationService
+    let updateChecker = UpdateChecker()
 
     private let store: any SettingsStoring
     private let setup: Networksetup
@@ -70,15 +71,6 @@ final class AppModel: ObservableObject {
     }
 
     var isPaused: Bool { settings.paused }
-
-    var menuBarIcon: String {
-        if lastError != nil { return "exclamationmark.triangle" }
-        switch systemProxyState {
-        case .on: return "network"
-        case .off: return "network.slash"
-        case .mixed, .unknown: return "questionmark.circle"
-        }
-    }
 
     var currentNetworkDescription: String {
         guard let network = currentNetwork else { return "无主要网络" }
@@ -122,6 +114,14 @@ final class AppModel: ObservableObject {
         settings.rules.filter(\.enabled).count
     }
 
+    func networkName(for network: RuleNetwork) -> String {
+        switch network {
+        case let .wifi(ssid): return ssid
+        case let .wired(interfaceName):
+            return availableServices.first { $0.device == interfaceName }?.name ?? interfaceName
+        }
+    }
+
     var endpointStatusText: String {
         switch endpointReachable {
         case true: return "可连接"
@@ -133,6 +133,7 @@ final class AppModel: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
+        updateChecker.start()
 
         monitor.onChange = { [weak self] identity in
             Task { @MainActor in await self?.networkChanged(identity) }
@@ -220,7 +221,7 @@ final class AppModel: ObservableObject {
         case .idle:
             switch decision {
             case let .action(action, ruleID):
-                let name = settings.rules.first { $0.id == ruleID }?.name ?? "规则"
+                let name = settings.rules.first { $0.id == ruleID }.map { networkName(for: $0.network) } ?? "网络"
                 statusText = "\(name)：\(action.displayName)"
             case .none:
                 statusText = "无匹配规则，保持现状"
@@ -418,6 +419,13 @@ final class AppModel: ObservableObject {
         guard settings.rules.indices.contains(target) else { return }
         settings.rules.swapAt(index, target)
         persist()
+        syncDriver()
+    }
+
+    func setAppearance(_ appearance: AppearanceMode) {
+        let previous = settings
+        settings.appearance = appearance
+        guard persist() else { settings = previous; return }
         syncDriver()
     }
 

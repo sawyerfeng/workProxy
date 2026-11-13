@@ -27,14 +27,15 @@
 - **规则按顺序匹配**：拖动调整优先级，取第一条符合条件的已启用规则。
 - **菜单栏手动控制**：直接开启、关闭代理；手动操作暂停规则，点击“恢复自动”重新匹配。
 - **可选 TUN 联动**：通过本机 Mihomo HTTP 控制接口同步切换 TUN，并回读状态确认。
-- **原生 macOS 界面**：SwiftUI 主窗口、Dock 图标和菜单栏入口，支持深浅色与减少动态效果。
+- **原生 macOS 界面**：紧凑的状态与规则列表，支持浅色、深色、跟随系统外观及减少动态效果。
+- **应用内更新**：自动检查正式版本，弹窗展示更新说明，确认后下载、验证签名并安装重启。
 - **权限状态可见**：启动时申请尚未决定的权限，在设置里查看状态或前往系统设置重新授权。
 
 ## 快速开始
 
 ### 下载安装包
 
-前往 [GitHub Releases](https://github.com/sawyerfeng/workProxy/releases/latest)，下载 `workProxy-0.1.0-macos-arm64.dmg`，打开后将 **workProxy.app** 拖入 **Applications**。
+前往 [GitHub Releases](https://github.com/sawyerfeng/workProxy/releases/latest)，下载 `workProxy-0.2.0-macos-arm64.dmg`，打开后将 **workProxy.app** 拖入 **Applications**。
 
 当前安装包面向 **Apple Silicon（M 系列）Mac**，最低系统版本 macOS 13；Intel Mac 可尝试从源码构建，尚未实机验证。安装包使用临时签名，未经过 Apple 公证，首次打开可能被系统安全检查拦截。
 
@@ -42,7 +43,7 @@ Release 同时提供源码 ZIP 与 SHA-256 校验文件。
 
 ### 从源码构建
 
-需要 **macOS 13+、Swift 6 工具链及 Xcode 或 Command Line Tools**。项目没有第三方 Swift 包依赖。
+需要 **macOS 13+、Swift 6 工具链及 Xcode 或 Command Line Tools**。Swift Package Manager 会下载用于应用内更新的 Sparkle 框架。
 
 ```sh
 git clone https://github.com/sawyerfeng/workProxy.git
@@ -55,6 +56,14 @@ open dist/workProxy.app
 构建产物位于 `dist/workProxy.app`。需要登录时自动启动，可将应用移到 `/Applications` 或 `~/Applications`，再在设置中启用“登录时启动”。更新后请先退出旧实例，再打开新版本。
 
 当前构建使用本机临时签名，未经过 Apple 公证。最低部署目标为 macOS 13，不代表所有系统版本和设备均已实测。
+
+### 检查与安装更新
+
+0.2.0 起默认自动检查正式版本（检查间隔为 6 小时），发现新版本会显示更新提醒与说明。点击安装后，由 Sparkle 下载更新、校验 Ed25519 签名并替换应用，随后重启。也可以从 **workProxy 菜单 → 检查更新…** 或 **设置 → 软件更新** 手动检查、关闭自动检查。
+
+请将应用放在可写的 Applications 文件夹中运行。0.1.0 尚未内置完整更新器，需要先手动安装一次 0.2.0；以后的版本可以在应用内更新。安装包签名及 Apple 公证状态与上文相同，更新签名不等同于 Apple 公证。
+
+维护者发布步骤及签名密钥说明见 [发布说明](docs/releasing.md)。
 
 ## 使用方式
 
