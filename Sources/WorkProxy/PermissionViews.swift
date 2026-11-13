@@ -30,11 +30,8 @@ struct LocationPermissionRow: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("定位", systemImage: "location")
-                Text("用于读取 Wi-Fi 名称与匹配地点")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            Label("定位", systemImage: "location")
+                .help("用于读取 Wi-Fi 名称与匹配地点")
             Spacer()
             Text(status).font(.caption).foregroundStyle(.secondary)
             Button(service.authorizationStatus == .notDetermined && CLLocationManager.locationServicesEnabled()

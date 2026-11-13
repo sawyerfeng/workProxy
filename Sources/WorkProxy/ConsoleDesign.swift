@@ -397,13 +397,9 @@ struct ProxyActionChoices: View {
                             .stroke(selected ? color : palette.secondary.opacity(0.6),
                                     style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
                             .frame(width: 26, height: 26)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(action.displayName)
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(selected ? palette.text : palette.secondary)
-                            Text(action == .on ? "使用已配置的代理地址" : "停止使用系统代理地址")
-                                .font(.caption).foregroundStyle(palette.secondary)
-                        }
+                        Text(action.displayName)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(selected ? palette.text : palette.secondary)
                         Spacer(minLength: 4)
                         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(selected ? color : palette.secondary.opacity(0.5))

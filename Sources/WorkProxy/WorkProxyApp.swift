@@ -28,11 +28,6 @@ struct EmptyStateView: View {
             .padding(.bottom, 6)
             Text(title).font(.system(size: 19, weight: .semibold, design: .rounded))
                 .foregroundStyle(palette.text)
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(palette.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
             Button(action: action) {
                 Label(actionTitle, systemImage: "plus")
                     .font(.callout.weight(.semibold))
@@ -41,6 +36,7 @@ struct EmptyStateView: View {
                     .background(palette.mint, in: Capsule())
             }
             .buttonStyle(PressFeedbackStyle())
+            .help(message)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -71,11 +67,7 @@ struct LocationAccessHint: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "location.slash").foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("需要定位权限").font(.callout.weight(.medium))
-                Text("macOS 需要定位权限来读取 Wi-Fi 名称，即使不设置地点条件。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            Text("读取 Wi-Fi 需要定位权限").font(.callout.weight(.medium))
             Spacer()
             if service.authorizationStatus == .notDetermined {
                 Button("允许定位") { service.requestAuthorization() }
@@ -170,8 +162,6 @@ struct RuleEditorView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 20, weight: .semibold, design: .rounded))
                         .foregroundStyle(palette.text)
-                    Text("连接指定网络时，自动切换系统代理")
-                        .font(.callout).foregroundStyle(palette.secondary)
                 }
             }
             .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 4)
@@ -235,11 +225,7 @@ struct RuleEditorView: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle(isOn: $draft.usePlace) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("限定生效地点（可选）").font(.callout.weight(.medium))
-                                Text("关闭时，在任何地点连接此网络都可匹配")
-                                    .font(.caption).foregroundStyle(palette.secondary)
-                            }
+                            Text("限定生效地点（可选）").font(.callout.weight(.medium))
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .toggleStyle(.switch).controlSize(.small)
@@ -256,16 +242,13 @@ struct RuleEditorView: View {
                 }
                 .padding(.horizontal, 20).padding(.vertical, 16)
             }
-            .frame(height: draft.usePlace ? 480 : (showNetworkOptions ? 380 : 300))
+            .frame(height: draft.usePlace ? 440 : (showNetworkOptions ? 340 : 260))
 
             Divider()
             HStack {
                 if let saveError {
                     Label(saveError, systemImage: "exclamationmark.circle")
                         .font(.caption).foregroundStyle(.red)
-                } else {
-                    Text("下次网络变化时自动匹配")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("取消") { dismiss() }
@@ -836,9 +819,7 @@ struct RulesView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("网络规则").font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundStyle(palette.text)
-                    Text(model.settings.rules.isEmpty
-                         ? "连接网络时按规则开关代理"
-                         : "从上到下匹配 · \(model.enabledRuleCount) 条已启用")
+                    Text("\(model.enabledRuleCount) 条已启用")
                         .font(.caption).foregroundStyle(palette.secondary)
                 }
                 Spacer()
@@ -908,6 +889,7 @@ struct RulesView: View {
                     })
                 }
                 .listStyle(.plain).scrollContentBackground(.hidden)
+                .help("从上到下匹配 · 拖动排序 · 双击编辑 · 右键更多操作")
                 .padding(.horizontal, 8)
                 .overlay {
                     if filteredRules.isEmpty {
@@ -915,10 +897,6 @@ struct RulesView: View {
                             .foregroundStyle(palette.secondary)
                     }
                 }
-                Text(isSearching ? "搜索时不可拖动排序" : "拖动调整优先级 · 双击编辑 · 右键更多操作")
-                    .font(.caption).foregroundStyle(palette.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24).padding(.bottom, 14).padding(.top, 4)
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.settings.rules)
@@ -1021,8 +999,6 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("设置").font(.system(size: 20, weight: .semibold, design: .rounded))
                         .foregroundStyle(palette.text)
-                    Text("配置一次，所有网络规则共用。")
-                        .font(.callout).foregroundStyle(palette.secondary)
                 }
             }
             .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 8)
@@ -1037,8 +1013,6 @@ struct PreferencesView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    Text("自动切换跟随 macOS 系统外观。")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("软件更新") {
                     UpdateSettingsView(checker: model.updateChecker)
@@ -1059,11 +1033,7 @@ struct PreferencesView: View {
                 Section("权限") {
                     LocationPermissionRow(service: model.locationService)
                     HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Label("失败通知", systemImage: "bell")
-                            Text("规则执行失败时提醒，可选")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+                        Label("失败通知", systemImage: "bell")
                         Spacer()
                         Text(model.notificationStatus.permissionLabel)
                             .font(.caption).foregroundStyle(.secondary)

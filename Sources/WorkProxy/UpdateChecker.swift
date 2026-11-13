@@ -51,7 +51,5 @@ struct UpdateSettingsView: View {
             get: { checker.automaticallyChecksForUpdates },
             set: { checker.setAutomaticallyChecksForUpdates($0) }
         ))
-        Text("发现新版本时提醒，点击安装后自动下载、校验并重启。")
-            .font(.caption).foregroundStyle(.secondary)
     }
 }

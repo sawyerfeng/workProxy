@@ -19,10 +19,10 @@ struct FlClashSettingsView: View {
     var body: some View {
         Toggle("系统代理与 TUN 同步开关", isOn: $enabled)
         if enabled {
-            TextField("控制器地址", text: $address)
+            TextField("HTTP 控制器地址", text: $address)
+                .help("使用客户端的 HTTP 外部控制器端口，不是代理端口")
             SecureField("控制器密钥", text: $secret)
-            Text("在 FlClash、Clash Verge Rev 等 Mihomo 客户端中开启 HTTP 外部控制器，填写实际地址与密钥（不是代理端口）。手动开关和规则会同步开启或关闭 TUN。密钥保存在仅当前用户可读的本地设置文件中。")
-                .font(.caption).foregroundStyle(.secondary)
+                .help("密钥保存在仅当前用户可读的本地设置文件中")
         }
         HStack {
             Button("保存联动设置") {
