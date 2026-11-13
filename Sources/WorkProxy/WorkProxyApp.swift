@@ -242,7 +242,7 @@ struct RuleEditorView: View {
                 }
                 .padding(.horizontal, 20).padding(.vertical, 16)
             }
-            .frame(height: draft.usePlace ? 440 : (showNetworkOptions ? 340 : 260))
+            .frame(height: draft.usePlace ? 440 : (showNetworkOptions ? 340 : 300))
 
             Divider()
             HStack {
