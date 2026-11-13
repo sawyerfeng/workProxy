@@ -10,7 +10,7 @@
 ![Swift](https://img.shields.io/badge/Swift-6-orange?logo=swift)
 ![UI](https://img.shields.io/badge/UI-SwiftUI-438EFF)
 
-[介绍网站](https://sawyerfeng.github.io/workProxy/) · [快速开始](#快速开始) · [使用方式](#使用方式) · [TUN 联动](#clash--mihomo-联动) · [常见问题](#常见问题)
+[介绍网站](https://sawyerfeng.github.io/workProxy/) · [完整使用指南](https://sawyerfeng.github.io/workProxy/guide.html) · [快速开始](#快速开始) · [TUN 联动](#clash--mihomo-联动) · [常见问题](#常见问题)
 
 </div>
 
@@ -83,6 +83,8 @@ open dist/workProxy.app
 网络变化稳定 **3 秒**后执行，避免短暂断线引发反复切换。启动时匹配一次；同网络唤醒不重复执行。地点只是网络规则的附加条件，移动位置本身不会触发切换；定位不可用时会跳过地点规则，继续匹配后续规则。
 
 ## Clash / Mihomo 联动
+
+不清楚“控制台”、代理端口和控制器端口的区别时，先看 [Clash 控制器配置指南](https://sawyerfeng.github.io/workProxy/guide.html#controller)，内含 FlClash、Clash Verge Rev 的配置步骤和常见错误对照表。
 
 默认只控制 macOS 系统代理。需要一并控制 TUN 时：
 
