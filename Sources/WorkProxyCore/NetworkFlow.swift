@@ -8,55 +8,48 @@ public enum FlowEvent: Equatable, Sendable {
     case pause
     case resume(NetworkIdentity?)
     case sleep
-    case stabilizationElapsed(token: UUID)
+    case manualApply(ProxyAction)
     case locationResolved(token: UUID, result: LocationResult)
-    case applySucceeded
-    case applyFailed(String)
+    case applySucceeded(token: UUID)
+    case applyFailed(token: UUID, message: String)
 }
 
 public enum FlowEffect: Equatable, Sendable {
-    case scheduleStabilization(token: UUID, after: Duration)
-    case cancelStabilization
     case requestLocation(token: UUID, timeout: Duration)
     case cancelLocation
-    case apply(ProxyAction)
+    case apply(ProxyAction, token: UUID)
     case notifyFailure(String)
 }
 
 public struct FlowConfiguration: Sendable {
-    public var stabilization: Duration
     public var locationTimeout: Duration
 
-    public init(stabilization: Duration = .seconds(3),
-                locationTimeout: Duration = .seconds(5)) {
-        self.stabilization = stabilization
+    public init(locationTimeout: Duration = .seconds(5)) {
         self.locationTimeout = locationTimeout
     }
 
     public static let `default` = FlowConfiguration()
 }
 
-/// 纯状态机：输入网络/唤醒/启动/暂停事件，输出需要执行的效果。
-/// 时钟由调用方提供，便于用确定时间验证 2/3/4 秒边界。
+/// 纯状态机：切网先关闭代理，关闭成功后按已连接网络匹配规则。
 public struct NetworkFlowMachine: Sendable {
     public enum Phase: Equatable, Sendable {
         case idle
-        case waiting(token: UUID, identity: NetworkIdentity)
-        case locating(token: UUID, identity: NetworkIdentity)
-        case disconnected(token: UUID)
-        case applying
+        case resetting(token: UUID, identity: NetworkIdentity?)
+        case locating(token: UUID, identity: NetworkIdentity, proxyIsOff: Bool)
+        case disconnected
+        case applying(token: UUID)
     }
 
     private var settings: AppSettings
     private let configuration: FlowConfiguration
     private let engine: RuleEngine
+    private var currentIdentity: NetworkIdentity?
 
     public private(set) var phase: Phase = .idle
     public private(set) var lastEvaluated: NetworkIdentity?
     public private(set) var lastDecision: RuleDecision = .none
     public private(set) var lastError: String?
-    private var disconnectCandidate: NetworkIdentity?
-    private var disconnectTimerFired = false
 
     public init(settings: AppSettings,
                 configuration: FlowConfiguration = .default,
@@ -69,6 +62,15 @@ public struct NetworkFlowMachine: Sendable {
     public var isPaused: Bool { settings.paused }
     public var rules: [Rule] { settings.rules }
 
+    fileprivate func isCurrentApplication(_ token: UUID) -> Bool {
+        switch phase {
+        case let .resetting(current, _), let .applying(current):
+            return current == token
+        default:
+            return false
+        }
+    }
+
     @discardableResult
     public mutating func update(settings: AppSettings) -> [FlowEffect] {
         self.settings = settings
@@ -79,210 +81,113 @@ public struct NetworkFlowMachine: Sendable {
         switch event {
         case let .started(identity):
             guard !settings.paused else { return cancelPending() }
-            guard let identity else { return cancelPending() }
-            return cancelPending() + evaluate(identity: identity, now: now,
-                                              locationAttempted: false)
+            return evaluateCurrent(identity, now: now)
 
-        case let .networkChanged(identity):
-            return handleNetworkChanged(identity, now: now)
+        case let .networkChanged(identity), let .woke(identity):
+            guard !settings.paused else { return cancelPending() }
+            if let identity, let currentIdentity,
+               currentIdentity.isSamePhysicalNetwork(as: identity) { return [] }
+            if identity == nil {
+                if case .disconnected = phase { return [] }
+                if case .resetting(_, nil) = phase { return [] }
+            }
+            let effects = cancelPending()
+            currentIdentity = identity
+            lastDecision = .none
+            let token = UUID()
+            phase = .resetting(token: token, identity: identity)
+            return effects + [.apply(.off, token: token)]
 
         case .disconnected:
-            return handleDisconnected()
-
-        case let .woke(identity):
-            return handleWake(identity, now: now)
+            return handle(.networkChanged(nil), now: now)
 
         case .pause:
             settings.paused = true
             return cancelPending()
 
         case .sleep:
+            if phase != .idle && phase != .disconnected { currentIdentity = nil }
             return cancelPending()
 
         case let .resume(identity):
             settings.paused = false
-            guard let identity else { return cancelPending() }
-            return cancelPending() + evaluate(identity: identity, now: now,
-                                              locationAttempted: false)
+            return evaluateCurrent(identity, now: now)
 
-        case let .stabilizationElapsed(token):
-            return handleStabilizationElapsed(token, now: now)
+        case let .manualApply(action):
+            settings.paused = true
+            let effects = cancelPending()
+            let token = UUID()
+            phase = .applying(token: token)
+            return effects + [.apply(action, token: token)]
 
         case let .locationResolved(token, result):
-            return handleLocationResolved(token, result: result, now: now)
+            guard case let .locating(current, identity, proxyIsOff) = phase,
+                  current == token else { return [] }
+            let fix: LocationFix?
+            switch result {
+            case let .fix(value): fix = value
+            case .unavailable: fix = nil
+            }
+            return finish(identity: identity, now: now, location: fix, proxyIsOff: proxyIsOff)
 
-        case .applySucceeded:
-            if case .applying = phase { phase = .idle }
+        case let .applySucceeded(token):
+            guard isCurrentApplication(token) else { return [] }
             lastError = nil
+            if case let .resetting(_, identity) = phase {
+                guard let identity else {
+                    phase = .disconnected
+                    return []
+                }
+                return evaluate(identity: identity, now: now, proxyIsOff: true)
+            }
+            phase = .idle
             return []
 
-        case let .applyFailed(message):
-            let wasApplying: Bool
-            if case .applying = phase {
-                wasApplying = true
-                phase = .idle
+        case let .applyFailed(token, message):
+            guard isCurrentApplication(token) else { return [] }
+            if case .resetting(_, nil) = phase {
+                phase = .disconnected
             } else {
-                wasApplying = false
+                phase = .idle
             }
             lastError = message
-            return wasApplying ? [.notifyFailure(message)] : []
+            return [.notifyFailure(message)]
         }
     }
 
-    // MARK: - Network changes
-
-    private mutating func handleNetworkChanged(_ identity: NetworkIdentity?,
-                                               now: Date) -> [FlowEffect] {
-        guard !settings.paused else { return cancelPending() }
-        guard let identity else { return handleDisconnected() }
-
-        switch phase {
-        case let .waiting(_, current) where current.isSamePhysicalNetwork(as: identity):
-            return []
-        case let .locating(_, current) where current.isSamePhysicalNetwork(as: identity):
-            return []
-        case .disconnected:
-            if !disconnectTimerFired,
-               let candidate = disconnectCandidate,
-               candidate.isSamePhysicalNetwork(as: identity) {
-                phase = .idle
-                return [.cancelStabilization]
-            }
-            disconnectCandidate = nil
-            disconnectTimerFired = false
-            return scheduleStabilization(for: identity)
-        case .idle, .applying:
-            if let last = lastEvaluated, last.isSamePhysicalNetwork(as: identity) {
-                return []
-            }
-            return scheduleStabilization(for: identity)
-        case .waiting, .locating:
-            return scheduleStabilization(for: identity)
-        }
-    }
-
-    private mutating func handleDisconnected() -> [FlowEffect] {
-        guard !settings.paused else { return cancelPending() }
-        if case .disconnected = phase { return [] }
-
-        let candidate: NetworkIdentity?
-        switch phase {
-        case let .waiting(_, identity), let .locating(_, identity):
-            candidate = identity
-        default:
-            candidate = lastEvaluated
-        }
-
-        var effects: [FlowEffect] = []
-        switch phase {
-        case .locating: effects.append(.cancelLocation)
-        case .waiting: effects.append(.cancelStabilization)
-        default: break
-        }
-
-        disconnectCandidate = candidate
-        disconnectTimerFired = false
-        let token = UUID()
-        phase = .disconnected(token: token)
-        effects.append(.scheduleStabilization(token: token,
-                                              after: configuration.stabilization))
-        return effects
-    }
-
-    private mutating func handleWake(_ identity: NetworkIdentity?,
-                                     now: Date) -> [FlowEffect] {
-        guard !settings.paused else { return cancelPending() }
-        guard let identity else { return cancelPending() }
-
-        // 断线达到稳定阈值后唤醒：即使网络名相同也重新匹配。
-        if case .disconnected = phase, disconnectTimerFired {
-            return cancelPending() + evaluate(identity: identity, now: now,
-                                              locationAttempted: false)
-        }
-        if let last = lastEvaluated, last.isSamePhysicalNetwork(as: identity) {
-            return []
-        }
-        return cancelPending() + evaluate(identity: identity, now: now,
-                                          locationAttempted: false)
-    }
-
-    private mutating func scheduleStabilization(for identity: NetworkIdentity) -> [FlowEffect] {
-        var effects: [FlowEffect] = []
-        switch phase {
-        case .waiting, .disconnected: effects.append(.cancelStabilization)
-        case .locating: effects.append(.cancelLocation)
-        case .idle, .applying: break
-        }
-        let token = UUID()
-        phase = .waiting(token: token, identity: identity)
-        effects.append(.scheduleStabilization(token: token,
-                                              after: configuration.stabilization))
-        return effects
-    }
-
-    // MARK: - Evaluation
-
-    private mutating func handleStabilizationElapsed(_ token: UUID,
-                                                     now: Date) -> [FlowEffect] {
-        switch phase {
-        case let .waiting(current, identity) where current == token:
-            return evaluate(identity: identity, now: now, locationAttempted: false)
-        case let .disconnected(current) where current == token:
-            disconnectTimerFired = true
-            return []
-        default:
-            return []
-        }
-    }
-
-    private mutating func handleLocationResolved(_ token: UUID, result: LocationResult,
-                                                 now: Date) -> [FlowEffect] {
-        guard case let .locating(current, identity) = phase, current == token else {
-            return []
-        }
-        let fix: LocationFix?
-        switch result {
-        case let .fix(value): fix = value
-        case .unavailable: fix = nil
-        }
-        return finish(identity: identity, now: now, location: fix)
+    private mutating func evaluateCurrent(_ identity: NetworkIdentity?, now: Date) -> [FlowEffect] {
+        let effects = cancelPending()
+        currentIdentity = identity
+        guard let identity else { return effects }
+        return effects + evaluate(identity: identity, now: now, proxyIsOff: false)
     }
 
     private mutating func evaluate(identity: NetworkIdentity, now: Date,
-                                   locationAttempted: Bool) -> [FlowEffect] {
-        if !locationAttempted,
-           engine.mayRequireLocation(rules: settings.rules, identity: identity) {
+                                   proxyIsOff: Bool) -> [FlowEffect] {
+        if engine.mayRequireLocation(rules: settings.rules, identity: identity) {
             let token = UUID()
-            phase = .locating(token: token, identity: identity)
-            return [.requestLocation(token: token,
-                                     timeout: configuration.locationTimeout)]
+            phase = .locating(token: token, identity: identity, proxyIsOff: proxyIsOff)
+            return [.requestLocation(token: token, timeout: configuration.locationTimeout)]
         }
-        return finish(identity: identity, now: now, location: nil)
+        return finish(identity: identity, now: now, location: nil, proxyIsOff: proxyIsOff)
     }
 
     private mutating func finish(identity: NetworkIdentity, now: Date,
-                                 location: LocationFix?) -> [FlowEffect] {
+                                 location: LocationFix?, proxyIsOff: Bool) -> [FlowEffect] {
         lastEvaluated = identity
-        let decision = engine.decide(rules: settings.rules, identity: identity,
+        lastDecision = engine.decide(rules: settings.rules, identity: identity,
                                      location: location, now: now)
-        lastDecision = decision
-        switch decision {
-        case .none:
-            phase = .idle
-            return []
-        case let .action(action, _):
-            phase = .applying
-            return [.apply(action)]
-        }
+        phase = .idle
+        guard case let .action(action, _) = lastDecision,
+              !(proxyIsOff && action == .off) else { return [] }
+        let token = UUID()
+        phase = .applying(token: token)
+        return [.apply(action, token: token)]
     }
 
     private mutating func cancelPending() -> [FlowEffect] {
-        var effects: [FlowEffect] = []
-        switch phase {
-        case .waiting, .disconnected: effects.append(.cancelStabilization)
-        case .locating: effects.append(.cancelLocation)
-        case .idle, .applying: break
-        }
+        let effects: [FlowEffect]
+        if case .locating = phase { effects = [.cancelLocation] } else { effects = [] }
         phase = .idle
         return effects
     }
@@ -303,14 +208,13 @@ public protocol FailureNotifying: Sendable {
     func notifyFailure(_ message: String) async
 }
 
-/// 把纯状态机接到真实时钟、定位、系统代理和通知上。
+/// 串行写入代理；过期任务在写入前和回传结果前核对网络令牌。
 public actor NetworkFlowDriver {
     private var machine: NetworkFlowMachine
     private var endpoint: ProxyEndpoint
     private let locator: any LocationRequesting
     private let applier: any ProxyActionApplying
     private let notifier: any FailureNotifying
-    private var timerTask: Task<Void, Never>?
     private var locationTask: Task<Void, Never>?
     private var applyTask: Task<Void, Error>?
 
@@ -341,16 +245,16 @@ public actor NetworkFlowDriver {
     }
 
     public func applyManually(_ action: ProxyAction) async {
-        await send(.pause)
-        await execute([.apply(action)])
+        await send(.manualApply(action))
     }
 
-    private func applySerially(_ action: ProxyAction) async throws {
+    private func applySerially(_ action: ProxyAction, token: UUID) async throws {
         let previous = applyTask
         let applier = self.applier
         let endpoint = self.endpoint
         let task = Task {
             _ = try? await previous?.value
+            guard self.machine.isCurrentApplication(token) else { return }
             try await applier.apply(action, endpoint: endpoint)
         }
         applyTask = task
@@ -360,15 +264,6 @@ public actor NetworkFlowDriver {
     private func execute(_ effects: [FlowEffect]) async {
         for effect in effects {
             switch effect {
-            case let .scheduleStabilization(token, after):
-                timerTask?.cancel()
-                timerTask = Task { [weak self] in
-                    do { try await Task.sleep(for: after) } catch { return }
-                    await self?.send(.stabilizationElapsed(token: token))
-                }
-            case .cancelStabilization:
-                timerTask?.cancel()
-                timerTask = nil
             case let .requestLocation(token, timeout):
                 locationTask?.cancel()
                 locationTask = Task { [weak self] in
@@ -380,12 +275,12 @@ public actor NetworkFlowDriver {
             case .cancelLocation:
                 locationTask?.cancel()
                 locationTask = nil
-            case let .apply(action):
+            case let .apply(action, token):
                 do {
-                    try await applySerially(action)
-                    await send(.applySucceeded)
+                    try await applySerially(action, token: token)
+                    await send(.applySucceeded(token: token))
                 } catch {
-                    await send(.applyFailed(error.localizedDescription))
+                    await send(.applyFailed(token: token, message: error.localizedDescription))
                 }
             case let .notifyFailure(message):
                 await notifier.notifyFailure(message)

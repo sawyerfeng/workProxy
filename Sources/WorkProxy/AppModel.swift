@@ -226,12 +226,12 @@ final class AppModel: ObservableObject {
             case .none:
                 statusText = "无匹配规则，保持现状"
             }
-        case .waiting:
-            statusText = "网络变化，等待稳定 3 秒…"
+        case .resetting:
+            statusText = "网络变化，正在关闭代理…"
         case .locating:
             statusText = "正在获取位置…"
         case .disconnected:
-            statusText = "网络已断开"
+            statusText = "网络已断开，等待连接"
         case .applying:
             statusText = "正在应用代理…"
         }

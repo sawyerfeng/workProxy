@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0c1518">
-<meta name="description" content="workProxy 0.2.0 使用指南：首次安装、代理地址、网络规则，以及 FlClash / Clash Verge Rev 的 HTTP 控制器、密钥和 TUN 联动配置。">
+<meta name="description" content="workProxy 0.2.1 使用指南：首次安装、代理地址、网络规则，以及 FlClash / Clash Verge Rev 的 HTTP 控制器、密钥和 TUN 联动配置。">
 <title>使用与配置指南 — workProxy</title>
 <link rel="icon" href="./icon.png">
 <link rel="stylesheet" href="./style.css">
@@ -16,10 +16,10 @@
 <div class="guide-layout wrap">
 <aside class="guide-sidebar"><nav aria-label="文档目录"><a href="#install">01 安装与权限</a><a href="#proxy">02 配置代理地址</a><a href="#rules">03 创建网络规则</a><a href="#controller">04 Clash 控制器配置</a><a href="#flclash">FlClash</a><a href="#verge">Clash Verge Rev</a><a href="#verify">05 测试与排错</a><a href="#updates">06 更新与日常使用</a></nav></aside>
 <main id="main" class="guide-content">
-<div class="guide-heading"><span class="release-label">使用指南 · 0.2.0</span><h1>装好之后，<br>从这里开始。</h1><p>先让系统代理正常工作，再按需配置 TUN 联动。</p><a class="text-link" href="#controller">只想配置 Clash 控制器？直接跳转 ↗</a></div>
+<div class="guide-heading"><span class="release-label">使用指南 · 0.2.1</span><h1>装好之后，<br>从这里开始。</h1><p>先让系统代理正常工作，再按需配置 TUN 联动。</p><a class="text-link" href="#controller">只想配置 Clash 控制器？直接跳转 ↗</a></div>
 
 <section id="install"><h2>01 / 安装与权限</h2>
-<ol><li>从<a href="https://github.com/sawyerfeng/workProxy/releases/latest">发布页</a>下载 <code>workProxy-0.2.0-macos-arm64.dmg</code>，将 <strong>workProxy.app</strong> 拖入“应用程序”。当前安装包适用于 M 系列 Mac，系统要求 macOS 13 或更高版本。</li><li>启动 workProxy，允许定位权限。macOS 读取 Wi-Fi 名称也需要定位权限；不用地点条件时，同样可能需要授权。系统定位服务也应处于开启状态。</li><li>通知权限可选，用于执行失败提醒。登录启动可在“设置”中开启。</li></ol>
+<ol><li>从<a href="https://github.com/sawyerfeng/workProxy/releases/latest">发布页</a>下载 <code>workProxy-0.2.1-macos-arm64.dmg</code>，将 <strong>workProxy.app</strong> 拖入“应用程序”。当前安装包适用于 M 系列 Mac，系统要求 macOS 13 或更高版本。</li><li>启动 workProxy，允许定位权限。macOS 读取 Wi-Fi 名称也需要定位权限；不用地点条件时，同样可能需要授权。系统定位服务也应处于开启状态。</li><li>通知权限可选，用于执行失败提醒。登录启动可在“设置”中开启。</li></ol>
 <p>当前安装包使用临时签名，尚未经过 Apple 公证。若系统提示无法验证开发者，先核对下载来源和发布说明；确认后，按 macOS 的“隐私与安全性”提示处理。不要全局关闭系统安全保护。</p>
 </section>
 
@@ -32,7 +32,7 @@
 <section id="rules"><h2>03 / 创建网络规则</h2>
 <ol><li>在主窗口点击 <strong>＋</strong>。能识别当前网络时，会自动带入它；需要其他 Wi-Fi 或有线接口时，点击“更换网络”。Wi-Fi 名称无法读取时，可以从列表选择或手动输入。</li><li>选择 <strong>开启系统代理</strong> 或 <strong>关闭系统代理</strong>。例如公司网络关闭，家庭 Wi-Fi 开启。</li><li>需要区分同名 Wi-Fi 时，打开 <strong>限定生效地点（可选）</strong>，搜索并选中地址，再设置范围。只输入地址但没有选中结果，不能保存地点规则。</li><li>点击 <strong>保存规则</strong>。规则默认启用；保存不会立即执行，下一次网络事件会匹配。需要立即验证时，在顶部“…”运行详情中点击“立即应用”，并确认自动切换已开启。</li></ol>
 <p>规则从上到下匹配，使用第一条符合条件的已启用规则。把带地点条件的具体规则放在同网络的普通规则前面；可拖动调整优先级，双击编辑，右键复制、移动或删除。</p>
-<p>网络变化稳定 3 秒后再执行；没有匹配规则时保持现状。位置变化本身不会单独触发切换。</p>
+<p>网络变化或断线时立即关闭代理，连接确认后按规则决定开关，不固定等待。新网络没有匹配规则时保持关闭，同网断线重连也重新匹配；启动或恢复时没有匹配则保持现状。位置变化本身不会单独触发切换。</p>
 </section>
 
 <section id="controller"><h2>04 / Clash“控制台”到底填什么？</h2>

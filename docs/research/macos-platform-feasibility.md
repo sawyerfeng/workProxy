@@ -11,7 +11,7 @@
 - `NWPathMonitor` 提供网络变化回调，可作为重新采样网络状态的入口；`NWInterface` 提供接口类型、名称和索引。[NWPathMonitor](https://developer.apple.com/documentation/network/nwpathmonitor/)、[NWInterface](https://developer.apple.com/documentation/network/nwinterface)
 - `NWPath.availableInterfaces` 是按偏好顺序排列的可用接口列表；`usesInterfaceType` 的官方说明明确包括直接路由、经过隧道后使用物理接口、以及多个接口都可能可用。因此不能将一个布尔 `usesInterfaceType(.wifi)` 当作“唯一主网络”的证据，也不能把所有 path 回调都判定为物理网络切换。[usesInterfaceType](https://developer.apple.com/documentation/network/nwpath/usesinterfacetype(_:))
 - `SCDynamicStore` 可读取当前网络状态，并按键或键模式订阅变化；适合作为网络服务/链路状态的补充信号。[SCDynamicStore](https://developer.apple.com/documentation/systemconfiguration/scdynamicstore-gb2)
-- **实现推断与验证要求：**维护 Wi-Fi SSID/所选有线接口构成的物理网络身份及连接状态；路由、DNS、代理设置改变只触发重采样，身份未变不执行规则。过滤隧道接口并不自动解决多接口优先级，应在 Wi-Fi＋以太网＋TUN 同时存在时验证底层接口选择，包含 IPv4/IPv6 不同路径；必要时结合系统网络服务状态。不能只取默认路由的接口名称，因为代理本身可能改变路由。3 秒防抖不能替代身份去重。
+- **实现推断与验证要求：**维护 Wi-Fi SSID/所选有线接口构成的物理网络身份及连接状态；路由、DNS、代理设置改变只触发重采样，身份未变不执行规则。过滤隧道接口并不自动解决多接口优先级，应在 Wi-Fi＋以太网＋TUN 同时存在时验证底层接口选择，包含 IPv4/IPv6 不同路径；必要时结合系统网络服务状态。不能只取默认路由的接口名称，因为代理本身可能改变路由。立即关闭代理的切网策略也不能替代身份去重。
 - **实现推断：**有线规则保存所选网络服务标识及接口信息，不只保存可修改的显示名称；拔插、不同扩展坞、重建网络服务后的稳定性需要实测。
 
 ## Wi-Fi 名称与权限

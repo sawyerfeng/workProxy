@@ -25,7 +25,7 @@
 
 <h1>换个网络。<br>剩下的，<br><em>自动切换。</em></h1>
 <p class="intro">在公司关闭代理，回到家自动开启。<br>把每天重复的开关，交给 workProxy。</p>
-<div class="actions"><a class="button primary" href="https://github.com/sawyerfeng/workProxy/releases/download/v0.2.0/workProxy-0.2.0-macos-arm64.dmg"><span aria-hidden="true">↓</span> 下载 macOS 版</a><a class="text-link" href="https://github.com/sawyerfeng/workProxy/releases/tag/v0.2.0">v0.2.0 发布说明 ↗</a><a class="text-link" href="./guide.html">使用与配置指南 ↗</a></div>
+<div class="actions"><a class="button primary" href="https://github.com/sawyerfeng/workProxy/releases/download/v0.2.1/workProxy-0.2.1-macos-arm64.dmg"><span aria-hidden="true">↓</span> 下载 macOS 版</a><a class="text-link" href="https://github.com/sawyerfeng/workProxy/releases/tag/v0.2.1">v0.2.1 发布说明 ↗</a><a class="text-link" href="./guide.html">使用与配置指南 ↗</a></div>
 <p class="download-note">M 系列 Mac · macOS 13+ · 未公证</p>
 </div>
 <div class="hero-demo">
@@ -94,12 +94,12 @@
 <article class="feature"><h3>系统代理 + TUN。</h3><p>配置 Mihomo 控制器，让两种开关一起切换。执行后回读确认，失败会明确提醒。</p><div class="tun-art" aria-hidden="true"><span>系统代理</span><i>＋</i><span>TUN</span></div></article>
 </div>
 </section>
-<section class="release-section wrap" aria-label="0.2.0 新功能">
-<div><span class="release-label">新版本 · 0.2.0</span><h2>界面更紧凑，<br>更新在应用内完成。</h2></div>
-<div class="release-features"><article><h3>浅色、深色，跟随系统。</h3><p>收窄的主窗口，按需展开的搜索和地点条件。日常操作，只留下需要的内容。</p></article><article><h3>发现新版，提醒你安装。</h3><p>自动检查正式版本，确认后下载、验证签名并安装重启。</p><a class="text-link" href="./guide.html#updates">了解更新方式 ↗</a></article></div>
+<section class="release-section wrap" aria-label="0.2.1 新功能">
+<div><span class="release-label">新版本 · 0.2.1</span><h2>换网先关代理，<br>连接后按规则开启。</h2></div>
+<div class="release-features"><article><h3>不等 3 秒，切网先关闭。</h3><p>断线或切换网络就关闭代理，连接确认后再匹配规则。同网重连也重新匹配，未知网络保持关闭。</p></article><article><h3>发现新版，提醒你安装。</h3><p>自动检查正式版本，确认后下载、验证签名并安装重启。</p><a class="text-link" href="./guide.html#updates">了解更新方式 ↗</a></article></div>
 </section>
 <section class="quiet-band">
-<div class="wrap quiet-content"><h2>该工作时工作。<br><span>其余时间，保持安静。</span></h2><div class="quiet-facts"><p><b>03<span>秒</span></b>网络稳定后再执行，减少短暂断线带来的反复切换。</p><p><b>01<span>条</span></b>从上到下，执行第一条匹配规则。没有匹配，就保持现状。</p><p><b>由你<span>决定</span></b>暂停不会改变代理。恢复自动时，重新匹配当前网络。</p></div></div>
+<div class="wrap quiet-content"><h2>该工作时工作。<br><span>其余时间，保持安静。</span></h2><div class="quiet-facts"><p><b>立即<span>关闭</span></b>网络变化先关代理，连接确认后按规则决定开关。</p><p><b>01<span>条</span></b>从上到下，执行第一条匹配规则。新网络没有匹配，就保持代理关闭。</p><p><b>由你<span>决定</span></b>暂停不会改变代理。恢复自动时，重新匹配当前网络。</p></div></div>
 </section>
 <section id="start" class="section wrap start">
 <div class="section-heading"><h2>三步，把开关交出去。</h2></div>
@@ -117,7 +117,7 @@
 <details><summary>规则和密钥保存在哪里？</summary><p>保存在本机的 <code>~/Library/Application Support/workProxy/settings.json</code>。密钥以明文存储，不使用钥匙串，请勿分享该文件。地址搜索和地图使用 Apple 系统服务，需要联网。</p></details>
 </div>
 </section>
-<section class="final-cta wrap"><div><h2>下一次换网络，<br>少想一件事。</h2></div><div><a class="button primary" href="https://github.com/sawyerfeng/workProxy/releases/download/v0.2.0/workProxy-0.2.0-macos-arm64.dmg">↓ 下载 workProxy</a><p class="download-note">v0.2.0 · M 系列 Mac · 未公证</p><a class="text-link" href="https://github.com/sawyerfeng/workProxy/releases/download/v0.2.0/workProxy-0.2.0-source.zip">获取源码 ↗</a></div></section>
+<section class="final-cta wrap"><div><h2>下一次换网络，<br>少想一件事。</h2></div><div><a class="button primary" href="https://github.com/sawyerfeng/workProxy/releases/download/v0.2.1/workProxy-0.2.1-macos-arm64.dmg">↓ 下载 workProxy</a><p class="download-note">v0.2.1 · M 系列 Mac · 未公证</p><a class="text-link" href="https://github.com/sawyerfeng/workProxy/releases/download/v0.2.1/workProxy-0.2.1-source.zip">获取源码 ↗</a></div></section>
 </main>
 <footer class="wrap"><a class="brand" href="./"><img src="./icon.png" width="28" height="28" alt="">workProxy</a><div><a href="./guide.html">使用指南 ↗</a><a href="https://github.com/sawyerfeng/workProxy/tree/main">源代码 ↗</a><a href="https://github.com/sawyerfeng/workProxy/issues">反馈问题 ↗</a></div></footer>
 </body>

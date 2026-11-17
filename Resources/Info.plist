@@ -8,8 +8,8 @@
     <key>CFBundleExecutable</key><string>WorkProxy</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.2.0</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>0.2.1</string>
+    <key>CFBundleVersion</key><string>3</string>
     <key>SUFeedURL</key><string>https://github.com/sawyerfeng/workProxy/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key><string>OOZG72pgbXEIwT7oxJ2MuegVrniRo1VKlqLAy+F/JsY=</string>
     <key>SUEnableAutomaticChecks</key><true/>
