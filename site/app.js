@@ -9,6 +9,7 @@ const autoButton = document.querySelector('#demo-auto');
 const searchButton = document.querySelector('#demo-search-toggle');
 const searchInput = document.querySelector('#demo-search');
 
+let switchedToUnmatched = false;
 function renderDemo() {
   sceneButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.scene === currentScene)));
   proxyButtons.forEach(button => button.setAttribute('aria-pressed', String((button.dataset.proxy === 'on') === proxyEnabled)));
@@ -18,23 +19,29 @@ function renderDemo() {
   autoButton.setAttribute('aria-pressed', String(automatic));
   autoButton.textContent = automatic ? '自动切换' : '恢复自动';
   document.querySelector('#demo-result').textContent = !automatic
-    ? '已暂停自动切换，保持当前代理状态。'
-    : currentScene === 'cafe' ? '没有匹配规则，保持此前的代理状态。'
-    : currentScene === 'home' ? '已匹配家庭网络规则，开启系统代理。' : '已匹配公司网络规则，关闭系统代理。';
+    ? '手动模式：自动切换已暂停，保持当前代理状态。'
+    : currentScene === 'cafe'
+      ? (switchedToUnmatched ? '未命中任何规则，切换网络后默认关闭代理。' : '当前网络没有匹配规则，恢复自动后保持现有状态。')
+      : currentScene === 'home' ? '已命中“家庭 Wi-Fi”规则，自动开启系统代理。' : '已命中“公司网络”规则，自动关闭系统代理。';
 }
 
 sceneButtons.forEach(button => button.addEventListener('click', () => {
   currentScene = button.dataset.scene;
-  if (automatic && currentScene !== 'cafe') proxyEnabled = currentScene === 'home';
+  if (automatic) {
+    proxyEnabled = currentScene === 'home';
+    switchedToUnmatched = currentScene === 'cafe';
+  }
   renderDemo();
 }));
 proxyButtons.forEach(button => button.addEventListener('click', () => {
   proxyEnabled = button.dataset.proxy === 'on';
   automatic = false;
+  switchedToUnmatched = false;
   renderDemo();
 }));
 autoButton.addEventListener('click', () => {
   automatic = !automatic;
+  switchedToUnmatched = false;
   if (automatic && currentScene !== 'cafe') proxyEnabled = currentScene === 'home';
   renderDemo();
 });
@@ -105,7 +112,7 @@ function selectRoute(route) {
   document.querySelector('#journey-label').textContent = throughProxy ? '家庭网络' : '公司网络';
   document.querySelector('#journey-state').textContent = throughProxy ? '经过代理' : '直接连接';
   document.querySelector('#journey-detail').textContent = throughProxy
-    ? '家庭网络，流量经过代理服务器。' : '公司网络，直接连接互联网。';
+    ? '回到家庭网络后自动开启系统代理，流量经由本地代理转发。' : '连上公司网络后自动关闭系统代理，流量直接访问互联网。';
   if (userPaused || motionPreference.matches || !diagramVisible) {
     position = target;
     drawRoute();
@@ -142,8 +149,8 @@ routeButtons.forEach(button => button.addEventListener('click', () => selectRout
 motionToggle.addEventListener('click', () => {
   userPaused = !userPaused;
   motionToggle.setAttribute('aria-pressed', String(userPaused));
-  motionToggle.setAttribute('aria-label', userPaused ? '播放自动演示' : '暂停自动演示');
-  motionToggle.textContent = userPaused ? '播放演示' : '暂停演示';
+  motionToggle.setAttribute('aria-label', userPaused ? '继续自动演示' : '暂停自动演示');
+  motionToggle.textContent = userPaused ? '继续演示' : '暂停演示';
   if (userPaused) {
     position = target;
     drawRoute();
